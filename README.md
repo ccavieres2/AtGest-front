@@ -1,9 +1,7 @@
-## back-end AtGest 
+# React AtGest
 
-`pip install -r requirements.txt`
+`npm install`
 
-`python manage.py makemigrations`
+`npm i react-router-dom`
 
-`python manage.py migrate`
-
-`python manage.py runserver 8000`
+`npm install @paypal/react-paypal-js`
