@@ -1,49 +1,35 @@
 // src/lib/api.js
 
-// URL base del backend (usa variable .env o localhost por defecto)
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api";
 
-/**
- * Devuelve headers con token JWT (si existe en localStorage)
- */
 function authHeaders() {
   const token = localStorage.getItem("access");
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-/**
- * Redirige al login si el token expiró
- */
 function handleExpiredSession() {
   localStorage.removeItem("access");
   alert("Tu sesión ha expirado. Por favor, inicia sesión nuevamente.");
-  window.location.href = "/";  // o "/login"
+  window.location.href = "/";
 }
 
-/**
- * Función general para hacer requests
- * - Soporta GET, POST, PUT, DELETE
- * - Maneja errores y parsea JSON automáticamente
- */
-async function request(method, path, data = null) {
+async function request(method, path, data = null, isMultipart = false) {
   const token = localStorage.getItem("access");
-  const headers = {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
+  const headers = isMultipart
+    ? { ...authHeaders() }
+    : {
+        "Content-Type": "application/json",
+        ...authHeaders(),
+      };
 
-  const options = {
-    method,
-    headers,
-  };
+  const options = { method, headers };
 
   if (data) {
-    options.body = JSON.stringify(data);
+    options.body = isMultipart ? data : JSON.stringify(data);
   }
 
   const res = await fetch(`${API_BASE}${path}`, options);
 
-  // Solo redirigir si es 401 Y el request tenía token (no en login)
   if (res.status === 401 && token) {
     handleExpiredSession();
     return;
@@ -63,9 +49,9 @@ async function request(method, path, data = null) {
   return payload;
 }
 
-/**
- * Métodos exportados para usar fácilmente en el front-end
- */
+// ✅ Exporta función especial para multipart
+export const apiPostMultipart = (path, formData) => request("POST", path, formData, true);
+
 export const apiGet = (path) => request("GET", path);
 export const apiPost = (path, data) => request("POST", path, data);
 export const apiPut = (path, data) => request("PUT", path, data);

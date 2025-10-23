@@ -5,4 +5,6 @@ export const PATHS = {
   dashboard: "/dashboard",
   pay: "/pay",
   inventory: "/inventory",
+  external: "/external",
+  externalnew: "/externalnew"
 };

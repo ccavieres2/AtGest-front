@@ -189,9 +189,10 @@ export default function DashBoard() {
         onClose={() => setDrawerOpen(false)}
         items={[
           { label: "Órdenes", onClick: () => navigate("/dashboard") },
-          { label: "Inventario", onClick: () => navigate("/inventory") }, // 👈 nuevo
+          { label: "Inventario", onClick: () => navigate("/inventory") },
           { label: "Clientes", onClick: () => alert("en construcción") },
           { label: "Servicios", onClick: () => alert("en construcción") },
+          { label: "Externalización", onClick: () => navigate("/external") },
         ]}/>
 
       {/* CONTENIDO */}

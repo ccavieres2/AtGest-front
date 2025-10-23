@@ -176,6 +176,7 @@ export default function Inventory() {
     { label: "Inventario", onClick: () => navigate("/inventory") },
     { label: "Clientes", onClick: () => alert("en construcción") },
     { label: "Servicios", onClick: () => alert("en construcción") },
+    { label: "Externalización", onClick: () => navigate("/external") },
   ];
 
   return (
