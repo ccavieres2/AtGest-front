@@ -12,6 +12,7 @@ const Pay = lazy(() => import("../payments/Pay"))
 const Inventory = lazy(() => import("../pages/Inventory"))
 const ExternalMarket = lazy(() => import("../externalizacion/ExternalMarket"))
 const OfferForm = lazy(() => import("../externalizacion/OfferForm"));
+const OfferDetail = lazy(() => import("../externalizacion/OfferDetail"));
 
 export default function AppRoutes() {
   return (
@@ -26,6 +27,7 @@ export default function AppRoutes() {
           <Route path={PATHS.inventory} element={<Inventory />} />
           <Route path={PATHS.external} element={<ExternalMarket />} />
           <Route path={PATHS.externalnew} element={<OfferForm />} />
+          <Route path={PATHS.externalid} element={<OfferDetail />} />
         </Routes>
       </Suspense>
     </BrowserRouter>

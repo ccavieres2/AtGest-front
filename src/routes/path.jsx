@@ -6,5 +6,6 @@ export const PATHS = {
   pay: "/pay",
   inventory: "/inventory",
   external: "/external",
-  externalnew: "/externalnew"
+  externalnew: "/externalnew",
+  externalid: "/external/:id",
 };
