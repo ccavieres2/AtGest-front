@@ -50,7 +50,7 @@ export default function OfferDetail() {
           <img
             src={service.image}
             alt={service.title}
-            className="w-full max-w-3xl h-auto max-h-80 object-contain rounded-lg mx-auto"
+            className="block max-w-full h-auto max-h-96 object-contain rounded-lg mx-auto"
           />
         )}
         <h1 className="text-3xl font-bold mb-2">{service.title}</h1>
