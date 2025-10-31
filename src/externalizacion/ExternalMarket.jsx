@@ -28,6 +28,7 @@ export default function ExternalMarket() {
         }}
       />
 
+      {/* 👇 1. Botón "Publicar servicio" ELIMINADO de aquí */}
       <AppDrawer
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
@@ -35,13 +36,26 @@ export default function ExternalMarket() {
           { label: "Órdenes", onClick: () => navigate("/dashboard") },
           { label: "Inventario", onClick: () => navigate("/inventory") },
           { label: "Externalización", onClick: () => navigate("/external") },
-          { label: "Publicar servicio", onClick: () => navigate("/externalnew") },
         ]}
       />
 
-      <main className="flex-1 mx-auto max-w-7xl px-4 py-6">
-        <h1 className="text-2xl font-bold mb-4">Servicios disponibles</h1>
+      <main className="flex-1 mx-auto max-w-7xl w-full px-4 py-6">
+        {/* 👇 2. Encabezado AÑADIDO (similar a Dashboard) */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
+          <h1 className="text-2xl font-bold tracking-tight">Servicios disponibles</h1>
+          <button
+            type="button"
+            onClick={() => navigate("/externalnew")}
+            className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 text-white px-4 py-2 text-sm font-semibold hover:bg-indigo-700"
+          >
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            <span>Publicar servicio</span>
+          </button>
+        </div>
 
+        {/* 3. Grid de servicios (sin cambios) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
           {services.map((srv) => (
             <div

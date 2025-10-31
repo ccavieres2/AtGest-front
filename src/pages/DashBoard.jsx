@@ -308,8 +308,6 @@ export default function DashBoard() {
         items={[
           { label: "Órdenes", onClick: () => navigate("/dashboard"), icon: iconOrders },
           { label: "Inventario", onClick: () => navigate("/inventory"), icon: iconInventory },
-          { label: "Clientes", onClick: () => alert("en construcción"), icon: iconClients },
-          { label: "Servicios", onClick: () => alert("en construcción"), icon: iconServices },
           { label: "Externalización", onClick: () => navigate("/external"), icon: iconExternal },
         ]}/>
 

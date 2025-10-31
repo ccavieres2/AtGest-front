@@ -174,8 +174,6 @@ export default function Inventory() {
   const drawerItems = [
     { label: "Órdenes", onClick: () => navigate("/dashboard") },
     { label: "Inventario", onClick: () => navigate("/inventory") },
-    { label: "Clientes", onClick: () => alert("en construcción") },
-    { label: "Servicios", onClick: () => alert("en construcción") },
     { label: "Externalización", onClick: () => navigate("/external") },
   ];
 

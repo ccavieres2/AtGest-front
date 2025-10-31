@@ -13,12 +13,24 @@ export default function OfferDetail() {
   const [service, setService] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Estado para guardar el usuario actual
+  const [currentUser, setCurrentUser] = useState(null);
+
   useEffect(() => {
+    // Carga los datos del usuario logueado
+    apiGet("/auth/me/")
+      .then((user) => setCurrentUser(user))
+      .catch(() => console.error("No se pudo cargar el usuario."));
+
+    // Carga el detalle del servicio
     apiGet(`/external-services/${id}/`)
       .then(setService)
       .catch(() => alert("No se pudo cargar el detalle del servicio."))
       .finally(() => setLoading(false));
   }, [id]);
+
+  // Compara el username del usuario logueado con el campo 'owner' del servicio
+  const isOwner = currentUser && service && currentUser.username === service.owner;
 
   if (loading) return <div className="text-center p-10">Cargando...</div>;
   if (!service) return <div className="text-center p-10">Servicio no encontrado.</div>;
@@ -46,13 +58,25 @@ export default function OfferDetail() {
       />
 
       <main className="flex-1 mx-auto max-w-4xl w-full px-4 py-8">
+        
+        {/* --- DIV CONTENEDOR DE IMAGEN (LA SOLUCIÓN HD) --- */}
         {service.image && (
-          <img
-            src={service.image}
-            alt={service.title}
-            className="block max-w-full h-auto max-h-96 object-contain rounded-lg mx-auto"
-          />
+          <div 
+            className="relative w-full max-w-3xl mx-auto mb-6 bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center"
+            // Definimos una altura mínima y máxima para el contenedor
+            style={{ minHeight: '320px', maxHeight: '450px' }}
+          >
+            <img
+              src={service.image}
+              alt={service.title}
+              // max-w-full y max-h-full aseguran que no crezca más que el div
+              // object-contain asegura que se vea completa y mantenga la proporción
+              className="max-w-full max-h-full object-contain"
+            />
+          </div>
         )}
+        {/* --- FIN DIV CONTENEDOR DE IMAGEN --- */}
+
         <h1 className="text-3xl font-bold mb-2">{service.title}</h1>
         <p className="text-gray-700 mb-4">{service.description}</p>
 
@@ -60,7 +84,7 @@ export default function OfferDetail() {
           <p><strong>Precio:</strong> ${service.price}</p>
           <p><strong>Categoría:</strong> {service.category || "No especificada"}</p>
           <p><strong>Duración estimada:</strong> {service.duration_minutes} minutos</p>
-          <p><strong>Publicado por:</strong> {service.owner_username || "Anónimo"}</p>
+          <p><strong>Publicado por:</strong> {service.owner || "Anónimo"}</p>
           <p><strong>Fecha de creación:</strong> {service.created_at?.slice(0, 10)}</p>
           <p><strong>Disponible:</strong> {service.available ? "Sí" : "No"}</p>
           <p><strong>Horarios disponibles:</strong></p>
@@ -71,12 +95,26 @@ export default function OfferDetail() {
           </ul>
         </div>
 
-        <button
-          className="mt-6 bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700"
-          onClick={() => alert("Lógica para contratar servicio")}
-        >
-          Contratar este servicio
-        </button>
+        {/* Lógica condicional para mostrar botones */}
+        <div className="mt-6 flex items-center gap-4">
+          {isOwner ? (
+            // Si es el dueño, muestra botón de "Editar"
+            <button
+              className="mt-6 bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
+              onClick={() => alert("Lógica para EDITAR este servicio (en construcción)")}
+            >
+              Editar mi publicación
+            </button>
+          ) : (
+            // Si es otro usuario, muestra botón de "Contratar"
+            <button
+              className="mt-6 bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700"
+              onClick={() => alert("Lógica para contratar servicio")}
+            >
+              Contratar este servicio
+            </button>
+          )}
+        </div>
       </main>
 
       <AppFooter />
