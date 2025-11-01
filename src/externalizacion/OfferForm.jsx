@@ -28,6 +28,42 @@ const localizer = dateFnsLocalizer({
 });
 // ----------------------------------
 
+// --- 1. NUEVO COMPONENTE DE BARRA DE HERRAMIENTAS PERSONALIZADO ---
+// Esta barra SÍ tiene navegación (Anterior/Siguiente)
+const CustomToolbar = ({ label, onNavigate }) => {
+  return (
+    <div className="rbc-toolbar p-2 flex justify-between items-center">
+      {/* Grupo de botones de navegación */}
+      <div className="rbc-btn-group">
+        <button 
+          type="button" 
+          className="rbc-button" // Usamos clases de RBC para que tome el estilo
+          onClick={() => onNavigate('PREV')}
+        >
+          Anterior
+        </button>
+        <button 
+          type="button" 
+          className="rbc-button"
+          onClick={() => onNavigate('NEXT')}
+        >
+          Siguiente
+        </button>
+      </div>
+
+      {/* El label que muestra la fecha (ej: "Octubre 27 – Noviembre 02") */}
+      <div className="rbc-toolbar-label text-lg font-semibold">
+        {label}
+      </div>
+
+      {/* Dejamos este grupo vacío para ocultar los botones de vistas (Mes/Semana/Día) */}
+      <div className="rbc-btn-group">
+      </div>
+    </div>
+  );
+};
+// --- FIN DEL COMPONENTE PERSONALIZADO ---
+
 
 export default function OfferForm() {
   const navigate = useNavigate();
@@ -48,10 +84,8 @@ export default function OfferForm() {
   const [errMsg, setErrMsg] = useState("");
   const [okMsg, setOkMsg] = useState("");
 
-  // --- ESTADOS PARA EL MODAL ---
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentEvent, setCurrentEvent] = useState(null); 
-  // -----------------------------
 
   const onChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
   const onFileChange = (e) => setImage(e.target.files[0]);
@@ -101,24 +135,15 @@ export default function OfferForm() {
 
   // --- LÓGICA DEL MODAL ---
 
-  // Helper function to pad numbers (e.g., 9 -> "09")
   const pad = (num) => num.toString().padStart(2, '0');
 
-  /**
-   * 👈 ¡FUNCIÓN CORREGIDA!
-   * Formatea un objeto Date a un string YYYY-MM-DDTHH:mm
-   * compatible con <input type="datetime-local">,
-   * respetando la hora local.
-   */
   const toDatetimeLocal = (date) => {
     if (!date || !(date instanceof Date)) return '';
-    
     const YYYY = date.getFullYear();
-    const MM = pad(date.getMonth() + 1); // getMonth() es 0-11
+    const MM = pad(date.getMonth() + 1);
     const DD = pad(date.getDate());
     const hh = pad(date.getHours());
     const mm = pad(date.getMinutes());
-    
     return `${YYYY}-${MM}-${DD}T${hh}:${mm}`;
   };
 
@@ -130,7 +155,6 @@ export default function OfferForm() {
         return { ...prev, title: value };
       }
       if (name === "start" || name === "end") {
-        // new Date(value) crea una Date object usando la hora local
         return { ...prev, [name]: new Date(value) };
       }
       return prev;
@@ -142,8 +166,6 @@ export default function OfferForm() {
       alert("Por favor, completa los campos de horario y título.");
       return;
     }
-    
-    // Validación de que la fecha final sea posterior a la inicial
     if (currentEvent.end <= currentEvent.start) {
       alert("La fecha de fin debe ser posterior a la fecha de inicio.");
       return;
@@ -195,8 +217,8 @@ export default function OfferForm() {
       
       const availabilityData = events.map(ev => ({
         title: ev.title,
-        start: ev.start.toISOString(), // Convertir a UTC para el backend
-        end: ev.end.toISOString(),   // Convertir a UTC para el backend
+        start: ev.start.toISOString(),
+        end: ev.end.toISOString(),
       }));
       
       formData.append("available_hours", JSON.stringify(availabilityData));
@@ -216,9 +238,7 @@ export default function OfferForm() {
         } else if (errorData.detail) {
           detailedError = `Error: ${errorData.detail}`;
         }
-      } catch (parseErr) {
-         // No era JSON
-      }
+      } catch (parseErr) { /* No era JSON */ }
       setErrMsg(detailedError);
     } finally {
       setSaving(false);
@@ -253,6 +273,7 @@ export default function OfferForm() {
 
         <form onSubmit={onSubmit} className="space-y-6 bg-white p-6 rounded-2xl shadow">
           
+          {/* ... (campos del formulario: title, category, description, price, etc. No cambian) ... */}
           <fieldset className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">Título</label>
@@ -306,17 +327,17 @@ export default function OfferForm() {
           <fieldset>
             <legend className="block text-sm font-medium mb-2">Horarios Disponibles</legend>
             <p className="text-xs text-gray-500 mb-3">
-              Haz clic o arrastra sobre el calendario para crear horarios. Arrastra un horario para moverlo o sus bordes para redimensionarlo. Haz clic en un horario para editarlo.
+              Usa "Anterior" y "Siguiente" para cambiar de semana. Arrastra en el calendario para crear un horario.
             </p>
             <div className="p-2 border rounded-lg" style={{ height: "600px" }}>
               <Calendar
                 localizer={localizer}
-                locale="es" 
+                locale="es" // 👈 Pone los días de la semana en español
                 messages={messages} 
                 events={events}
                 startAccessor="start"
                 endAccessor="end"
-                views={['month', 'week', 'day']} 
+                views={['week', 'day']} // 👈 Quitamos 'month' y 'agenda' para simplificar
                 defaultView="week" 
                 selectable={true} 
                 onSelectSlot={handleSelectSlot}
@@ -328,9 +349,12 @@ export default function OfferForm() {
                 draggableAccessor={event => true}
                 onEventDrop={handleDragEvent} 
                 
-                // Muestra las 24 horas
                 min={set(new Date(0), { hours: 0, minutes: 0 })}
                 max={set(new Date(0), { hours: 23, minutes: 59 })}
+
+                // --- 2. 👈 USA EL COMPONENTE PERSONALIZADO ---
+                components={{ toolbar: CustomToolbar }}
+                // ---------------------------------------------
               />
             </div>
           </fieldset>
@@ -365,6 +389,7 @@ export default function OfferForm() {
       {/* --- EL MODAL DE EVENTO --- */}
       <Transition appear show={isModalOpen} as={Fragment}>
         <Dialog as="div" className="relative z-50" onClose={() => setIsModalOpen(false)}>
+          {/* ... (el código del modal no cambia) ... */}
           <Transition.Child
             as={Fragment}
             enter="ease-out duration-300"
@@ -376,7 +401,6 @@ export default function OfferForm() {
           >
             <div className="fixed inset-0 bg-black bg-opacity-40" />
           </Transition.Child>
-
           <div className="fixed inset-0 overflow-y-auto">
             <div className="flex min-h-full items-center justify-center p-4 text-center">
               <Transition.Child
