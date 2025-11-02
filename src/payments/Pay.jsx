@@ -1,13 +1,30 @@
 // src/pages/Pay.jsx
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js";
 import { PATHS } from "../routes/path";
+import { apiPost } from "../lib/api"; // 👈 Importamos apiPost
 
 export default function Pay() {
   const navigate = useNavigate();
   const clientId = import.meta.env.VITE_PAYPAL_CLIENT_ID;
+  
   const [banner, setBanner] = useState(null); // {type: 'success'|'error'|'info', text: string}
+  const [registrationData, setRegistrationData] = useState(null);
+  const [isProcessing, setIsProcessing] = useState(false); // Para deshabilitar botones
+
+  // 1. Al cargar, lee los datos de registro desde la sesión
+  useEffect(() => {
+    const dataString = sessionStorage.getItem("registrationData");
+    if (dataString) {
+      setRegistrationData(JSON.parse(dataString));
+    } else {
+      // Si no hay datos, no deberían estar aquí. Los mandamos de vuelta.
+      alert("Error: No se encontraron datos de registro. Serás redirigido.");
+      navigate(PATHS.register);
+    }
+  }, [navigate]);
+
 
   const initialOptions = {
     "client-id": clientId,
@@ -16,12 +33,85 @@ export default function Pay() {
   };
 
   // helper para mostrar banner y redirigir (opcionalmente)
-  const notify = (type, text, redirectTo, delayMs = 1500) => {
+  const notify = (type, text, redirectTo = null, delayMs = 3000) => {
     setBanner({ type, text });
     if (redirectTo) {
       setTimeout(() => navigate(redirectTo), delayMs);
     }
   };
+
+  // 2. createOrder (CLIENTE)
+  // Esto no cambia, solo crea la orden en PayPal
+  const createOrder = (_, actions) => {
+    return actions.order.create({
+      purchase_units: [
+        {
+          amount: { value: "10.00" }, // <-- El monto de registro
+          description: "Suscripción inicial Atgest",
+        },
+      ],
+    });
+  }
+
+  // 3. onApprove (SERVIDOR)
+  // Se dispara cuando el usuario aprueba en el popup de PayPal
+  const onApprove = async (data, actions) => {
+    setIsProcessing(true); // Deshabilita botones
+    notify("info", "Procesando pago... No cierres esta ventana.", null);
+
+    try {
+      // 'data.orderID' es el ID de la transacción de PayPal
+      const payload = {
+        paypal_order_id: data.orderID,
+        user_data: registrationData, // Los datos del formulario de registro
+      };
+
+      // 4. Llamamos a NUESTRO backend para que capture el pago Y registre al usuario
+      const response = await apiPost("/register-and-pay/", payload);
+
+      // 5. ¡Éxito! El backend creó al usuario y confirmó el pago.
+      sessionStorage.removeItem("registrationData"); // Limpiamos la sesión
+      notify(
+        "success",
+        `Pago y registro exitosos 🎉 ¡Bienvenido, ${response.username}! Serás redirigido...`,
+        PATHS.login, // Redirigimos a Login
+        4000
+      );
+
+    } catch (err) {
+      // 6. Manejo de errores (muy importante)
+      console.error(err);
+      let errorMsg = "Ocurrió un error al confirmar el pago.";
+      
+      if (err.message) {
+          try {
+              // Intentamos leer el error JSON que envía el backend
+              const parsedError = JSON.parse(err.message);
+              
+              if (parsedError.details && (parsedError.details.username || parsedError.details.email)) {
+                  errorMsg = `El pago fue exitoso, pero el usuario o email ya existen. Serás redirigido al registro.`;
+                  // Lo mandamos de vuelta a registro
+                  setTimeout(() => navigate(PATHS.register), 5000);
+              
+              } else if (parsedError.details) {
+                  errorMsg = `Error: ${JSON.stringify(parsedError.details)}`;
+              } else {
+                  errorMsg = parsedError.error || "Error al procesar el pago.";
+              }
+          } catch(e) {
+              errorMsg = err.message; // No era un error JSON
+          }
+      }
+      
+      notify("error", errorMsg, null); // Mostramos el error
+      setIsProcessing(false); // Reactivamos los botones
+    }
+  };
+
+  // Si aún no cargan los datos de la sesión, muestra "Cargando..."
+  if (!registrationData) {
+    return <div className="min-h-screen grid place-items-center p-8 bg-gray-50">Cargando datos de registro...</div>;
+  }
 
   return (
     <PayPalScriptProvider options={initialOptions}>
@@ -44,46 +134,43 @@ export default function Pay() {
 
       <div className="min-h-screen grid place-items-center p-8 bg-gray-50">
         <div className="w-full max-w-md rounded-2xl border bg-white p-6 shadow-sm">
-          <h1 className="text-xl font-semibold mb-4">Pagar con PayPal</h1>
+          
+          <h1 className="text-xl font-semibold mb-2">Completar registro</h1>
+          <p className="text-sm text-gray-600 mb-4">
+            Estás registrando la cuenta: <strong className="text-indigo-600">{registrationData.username}</strong>
+          </p>
+          <p className="text-sm text-gray-600 mb-4">
+            Costo de suscripción: <strong className="text-indigo-600">$10.00 USD</strong>
+          </p>
+          
+          {/* Mostramos los botones o un mensaje de "Procesando" */}
+          {isProcessing ? (
+            <div className="text-center py-8">
+              <p className="text-lg font-semibold text-indigo-600">Procesando...</p>
+              <p className="text-sm">Por favor espera, estamos confirmando tu pago y creando tu cuenta.</p>
+            </div>
+          ) : (
+            <PayPalButtons
+              style={{ layout: "vertical" }}
+              createOrder={createOrder}
+              onApprove={onApprove}
+              onCancel={() => {
+                notify("info", "Registro cancelado. Puedes volver a intentarlo.");
+              }}
+              onError={(err) => {
+                console.error("PayPal error:", err);
+                notify("error", "Error de PayPal. Recarga la página e intenta nuevamente.");
+              }}
+            />
+          )}
 
-          <PayPalButtons
-            style={{ layout: "vertical" }}
-            createOrder={(_, actions) =>
-              actions.order.create({
-                purchase_units: [
-                  {
-                    amount: { value: "10.00" }, // <-- cambia el monto si lo necesitas
-                    description: "Suscripción inicial Atgest",
-                  },
-                ],
-              })
-            }
-            onApprove={async (_, actions) => {
-              try {
-                const details = await actions.order.capture();
-                // Si quieres, guarda el recibo para mostrarse luego
-                sessionStorage.setItem("pp_last_payment", JSON.stringify(details));
-
-                // ✅ Muestra banner y redirige a Login
-                notify(
-                  "success",
-                  "Pago exitoso 🎉 Serás redirigido al inicio de sesión…",
-                  PATHS.login,
-                  3000
-                );
-              } catch (e) {
-                console.error(e);
-                notify("error", "Ocurrió un error al confirmar el pago.");
-              }
-            }}
-            onCancel={() => {
-              notify("info", "Pago cancelado por el usuario.");
-            }}
-            onError={(err) => {
-              console.error("PayPal error:", err);
-              notify("error", "Error en PayPal. Intenta nuevamente.");
-            }}
-          />
+          <button 
+            onClick={() => navigate(PATHS.register)} 
+            className="w-full text-center text-sm text-gray-500 hover:text-indigo-600 mt-4"
+            disabled={isProcessing}
+          >
+            Volver al registro
+          </button>
         </div>
       </div>
     </PayPalScriptProvider>

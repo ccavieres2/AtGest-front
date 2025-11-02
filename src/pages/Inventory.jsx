@@ -236,7 +236,9 @@ export default function Inventory() {
                 </div>
                 <div className="md:col-span-2 text-slate-700">{p.sku}</div>
                 <div className="md:col-span-2 text-slate-700">{p.quantity}</div>
-                <div className="md:col-span-2 text-slate-700">${p.price.toLocaleString()}</div>
+                {/* ----- ⬇️ AQUÍ ESTÁ EL CAMBIO ⬇️ ----- */}
+                <div className="md:col-span-2 text-slate-700">${p.price.toLocaleString('es-CL', { maximumFractionDigits: 0 })}</div>
+                {/* ----- ⬆️ AQUÍ ESTÁ EL CAMBIO ⬆️ ----- */}
                 <div className="md:col-span-2">
                   <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
                     p.status === "Activo" ? "bg-emerald-100 text-emerald-700"

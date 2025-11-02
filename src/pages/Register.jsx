@@ -1,10 +1,11 @@
+// src/pages/Register.jsx
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom"; // 👈 Importa useNavigate
-import { apiPost } from "../lib/api";
+import { useNavigate, Link } from "react-router-dom";
+// ❗️ IMPORTANTE: Quitamos apiPost de aquí, ya no se usa
 import { PATHS } from "../routes/path";
 
 export default function Register() {
-  const navigate = useNavigate(); // 👈 Hook para redirigir
+  const navigate = useNavigate();
 
   const [form, setForm] = useState({
     username: "",
@@ -30,6 +31,7 @@ export default function Register() {
     return null;
   };
 
+  // ----- ⬇️ AQUÍ ESTÁ EL CAMBIO ⬇️ -----
   const onSubmit = async (e) => {
     e.preventDefault();
     setOkMsg("");
@@ -40,33 +42,27 @@ export default function Register() {
 
     setLoading(true);
     try {
-      const resp = await apiPost("/register/", form);
-      setOkMsg(resp?.message || "Usuario registrado con éxito.");
-      setForm({ username: "", email: "", password: "", password_confirm: "" });
-      setShowPwd(false);
-      setShowPwd2(false);
+      // 1. Ya no llamamos a apiPost("/register/")
+      
+      // 2. Guardamos los datos del formulario en la sesión del navegador
+      sessionStorage.setItem("registrationData", JSON.stringify(form));
 
-      // ✅ Redirigir automáticamente al pago
+      setOkMsg("Datos validados. Redirigiendo al pago...");
+      
+      // 3. Redirigimos a la página de pago
       setTimeout(() => {
-        navigate(PATHS.pay || "/pay"); // 👈 Redirige al path /pay
+        navigate(PATHS.pay || "/pay");
       }, 1000);
+
     } catch (err) {
-      try {
-        const parsed = JSON.parse(err.message);
-        const message =
-          parsed?.password?.[0] ||
-          parsed?.username?.[0] ||
-          parsed?.email?.[0] ||
-          parsed?.detail ||
-          "Error en el registro.";
-        setErrMsg(message);
-      } catch {
-        setErrMsg("Error en el registro.");
-      }
-    } finally {
+      // Esto podría fallar si sessionStorage está deshabilitado
+      setErrMsg("Error al preparar el pago. Habilita el almacenamiento de sesión.");
       setLoading(false);
     }
+    // No usamos finally porque navegamos a otra página
   };
+  // ----- ⬆️ AQUÍ ESTÁ EL CAMBIO ⬆️ -----
+
 
   const fakeNav = (msg) => () => alert(msg);
   const mismatch =
@@ -216,7 +212,7 @@ export default function Register() {
               disabled={loading}
               className="w-full bg-indigo-600 text-white rounded-lg py-2 font-semibold hover:bg-indigo-700 transition-all disabled:opacity-60"
             >
-              {loading ? "Registrando..." : "Crear cuenta"}
+              {loading ? "Validando..." : "Continuar al Pago"}
             </button>
 
             {/* Enlaces secundarios */}

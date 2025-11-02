@@ -6,11 +6,8 @@ import AppNavbar from "../components/layout/AppNavbar";
 import AppDrawer from "../components/layout/AppDrawer";
 import AppFooter from "../components/layout/AppFooter";
 
-/* ... (Aquí va todo tu código de Helpers UI, Modal, STATUS, EMPTY_FORM, etc.) ... */
-/* ... (No es necesario copiarlo de nuevo si ya lo tienes) ... */
+// --- Helpers UI ---
 
-// (El código de los Helpers UI, Modal, STATUS, EMPTY_FORM va aquí)
-/* Helpers UI que siguen siendo locales al dashboard */
 function IconButton({ title, onClick, children, className = "" }) {
   return (
     <button
@@ -35,6 +32,9 @@ function PrimaryButton({ title, onClick, children }) {
     </button>
   );
 }
+
+// --- Modal para Editar/Crear ---
+
 function Modal({ open, title, onClose, onSubmit, children, submitText = "Guardar" }) {
   if (!open) return null;
   return (
@@ -65,6 +65,120 @@ function Modal({ open, title, onClose, onSubmit, children, submitText = "Guardar
     </div>
   );
 }
+
+// --- ⭐️ NUEVO: Modal de solo lectura para Ver Detalle ⭐️ ---
+
+function ViewOrderModal({ order, onClose }) {
+  if (!order) return null;
+
+  // Helper para formatear moneda (con las correcciones que hicimos)
+  const formatCurrency = (val) => {
+    const num = Number(val);
+    if (isNaN(num)) return "$0"; // Maneja NaN si 'val' no es numérico
+    return "$" + num.toLocaleString('es-CL', { maximumFractionDigits: 0 });
+  };
+  
+  // Helper para formatear fechas
+  const formatDate = (dateStr) => {
+     if (!dateStr) return "No definida";
+     // Asegura que la fecha se interprete como local, no UTC
+     const datePart = dateStr.split('T')[0];
+     // Sumamos 1 día porque al parsear YYYY-MM-DD puede tomar el día anterior por zona horaria
+     const date = new Date(datePart);
+     date.setMinutes(date.getMinutes() + date.getTimezoneOffset());
+     return date.toLocaleDateString('es-CL', {
+        year: 'numeric', month: 'long', day: 'numeric'
+     });
+  };
+
+  // Helper para filas de detalles
+  const DetailRow = ({ label, value, className = "" }) => (
+    <div className={className}>
+      <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{label}</div>
+      <div className="text-base text-slate-900">{value || "—"}</div>
+    </div>
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-2xl rounded-2xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+        {/* Encabezado */}
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-slate-900">
+            Detalle Orden #{order.id}
+          </h3>
+          <button onClick={onClose} className="rounded p-1 hover:bg-slate-100" title="Cerrar">
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Contenido */}
+        <div className="mt-6 space-y-6">
+          {/* Estado */}
+          <div>
+            <span
+              className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-bold ${
+                order.status === "Completado" ? "bg-emerald-100 text-emerald-700"
+                : order.status === "En Taller" ? "bg-amber-100 text-amber-700"
+                : order.status === "Cancelado" ? "bg-red-100 text-red-700"
+                : "bg-slate-100 text-slate-700"
+              }`}
+            >
+              {order.status}
+            </span>
+          </div>
+
+          {/* Cliente */}
+          <fieldset>
+            <legend className="text-base font-semibold text-slate-800 mb-2 border-b pb-1">Cliente</legend>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <DetailRow label="Nombre" value={order.client_name} />
+              <DetailRow label="Teléfono" value={order.client_phone} />
+              <DetailRow label="Email" value={order.client_email} className="sm:col-span-2" />
+            </div>
+          </fieldset>
+
+          {/* Vehículo */}
+          <fieldset>
+            <legend className="text-base font-semibold text-slate-800 mb-2 border-b pb-1">Vehículo</legend>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+              <DetailRow label="Marca" value={order.vehicle_make} />
+              <DetailRow label="Modelo" value={order.vehicle_model} />
+              <DetailRow label="Año" value={order.vehicle_year} />
+              <DetailRow label="Patente" value={order.vehicle_plate} />
+              <DetailRow label="VIN (Chasis)" value={order.vehicle_vin} className="sm:col-span-2" />
+            </div>
+          </fieldset>
+
+          {/* Servicio y Costos */}
+          <fieldset>
+            <legend className="text-base font-semibold text-slate-800 mb-2 border-b pb-1">Servicio y Costos</legend>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <DetailRow label="Título del Servicio" value={order.service_title} className="sm:col-span-2" />
+              <DetailRow label="Descripción / Notas" value={order.service_description} className="sm:col-span-2" />
+              <DetailRow label="Fecha Agendada" value={formatDate(order.scheduled_date)} />
+              <div /> {/* Espacio vacío */}
+              <DetailRow label="Costo Estimado" value={formatCurrency(order.estimated_cost)} />
+              <DetailRow label="Costo Final" value={formatCurrency(order.final_cost)} />
+            </div>
+          </fieldset>
+        </div>
+
+        {/* Pie de página */}
+        <div className="mt-8 pt-4 border-t flex justify-end gap-2">
+          <button onClick={onClose} className="rounded-lg bg-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:bg-indigo-700">
+            Cerrar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+// --- ⭐️ FIN DEL NUEVO MODAL ⭐️ ---
+
 
 /* Mapeo de estados (API <-> UI) */
 const STATUS = {
@@ -116,13 +230,16 @@ export default function DashBoard() {
   const [saving, setSaving] = useState(false);
   const [errMsg, setErrMsg] = useState("");
 
-  /* ... (Aquí va todo tu código de loadOrders, filtered, openAdd, openEdit, saveForm, remove, etc.) ... */
+  // --- ⭐️ NUEVO: Estado para el modal de "Ver Detalle" ⭐️ ---
+  const [viewModalOpen, setViewModalOpen] = useState(false);
+  const [viewingOrder, setViewingOrder] = useState(null);
+  // --- -------------------------------------------------- ---
+
   // Cargar órdenes
   async function loadOrders() {
     setLoadingList(true);
     try {
       const data = await apiGet("/orders/");
-      // NUEVO: Normalización con todos los campos
       const normalized = data.map((o) => ({
         id: o.id,
         client_name: o.client_name,
@@ -135,8 +252,11 @@ export default function DashBoard() {
         vehicle_vin: o.vehicle_vin || "",
         service_title: o.service_title,
         service_description: o.service_description || "",
-        estimated_cost: o.estimated_cost || 0,
-        final_cost: o.final_cost || "",
+        
+        // CORRECCIÓN: Convertir a Número al cargar
+        estimated_cost: Number(o.estimated_cost) || 0,
+        final_cost: Number(o.final_cost) || 0,
+
         scheduled_date: o.scheduled_date ? o.scheduled_date.split('T')[0] : "", // Formato YYYY-MM-DD
         status: STATUS[o.status] || "Pendiente", // Convertir a Label
         created_at: o.created_at,
@@ -151,7 +271,7 @@ export default function DashBoard() {
   }
   useEffect(() => { loadOrders(); }, []);
 
-  // NUEVO: Filtro mejorado
+  // Filtro
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
     if (!s) return orders;
@@ -167,9 +287,26 @@ export default function DashBoard() {
     );
   }, [q, orders]);
 
+  // --- ⭐️ NUEVO: Funciones para abrir/cerrar el modal de "Ver Detalle" ⭐️ ---
+  function openView(id) {
+    const o = orders.find((x) => x.id === id);
+    if (!o) return;
+    setViewingOrder(o);
+    setViewModalOpen(true);
+  }
+
+  function closeView() {
+    setViewModalOpen(false);
+    // Pequeño delay para que la animación de salida ocurra antes de quitar los datos
+    setTimeout(() => setViewingOrder(null), 300); 
+  }
+  // --- ------------------------------------------------------------- ---
+
+
+  // Funciones para modal Editar/Crear
   function openAdd() {
     setErrMsg("");
-    setForm(EMPTY_FORM); // Usar el estado inicial vacío
+    setForm(EMPTY_FORM);
     setEditing(null);
     setModalOpen(true);
   }
@@ -178,20 +315,24 @@ export default function DashBoard() {
     const o = orders.find((x) => x.id === id);
     if (!o) return;
     setErrMsg("");
-    setForm(o); // El estado local 'o' ya está normalizado y coincide con el form
+    // Hacemos una copia para el formulario
+    setForm({
+      ...o,
+      // Convertimos 0 a string vacío para los inputs
+      final_cost: o.final_cost === 0 ? "" : o.final_cost,
+      estimated_cost: o.estimated_cost === 0 ? "" : o.estimated_cost,
+    });
     setEditing(o.id);
     setModalOpen(true);
   }
 
   async function saveForm() {
-    // NUEVO: Validación simple
     if (!form.client_name.trim() || !form.vehicle_model.trim() || !form.service_title.trim()) {
       setErrMsg("Nombre Cliente, Modelo Vehículo y Título Servicio son obligatorios.");
       return;
     }
     setSaving(true);
     try {
-      // NUEVO: Payload completo para la API
       const payload = {
         client_name: form.client_name,
         client_phone: form.client_phone || null,
@@ -206,7 +347,7 @@ export default function DashBoard() {
         estimated_cost: form.estimated_cost ? Number(form.estimated_cost) : 0,
         final_cost: form.final_cost ? Number(form.final_cost) : null,
         scheduled_date: form.scheduled_date || null,
-        status: STATUS_FROM_LABEL[form.status] || "pending", // Convertir a valor API
+        status: STATUS_FROM_LABEL[form.status] || "pending",
       };
 
       if (editing) {
@@ -235,14 +376,13 @@ export default function DashBoard() {
     }
   }
 
-  // Handlers Navbar
+  // Handlers
   const handleLogout = () => {
     localStorage.clear();
     location.href = "/login";
   };
   const handleAlerts = () => alert("Aquí irían tus alertas 😉");
 
-  // NUEVO: Handler para cambios en el formulario (inputs y selects)
   const onFormChange = (e) => {
     const { name, value, type } = e.target;
     setForm((f) => ({
@@ -250,13 +390,11 @@ export default function DashBoard() {
       [name]: type === 'number' ? (value === '' ? '' : Number(value)) : value,
     }));
   };
-  // NUEVO: Handler para inputs de fecha (para que acepten 'null')
   const onDateChange = (e) => {
      setForm((f) => ({ ...f, [e.target.name]: e.target.value || null }));
   }
 
-  // 👇 --- AQUÍ COMIENZAN LOS CAMBIOS ---
-  // 1. Define los iconos que usarás.
+  // Definición de iconos
   const iconOrders = (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/>
@@ -269,26 +407,12 @@ export default function DashBoard() {
       <path d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0l-2 5H6l-2-5m16 0s-2 5-6 5-6-5-6-5"/>
     </svg>
   );
-  const iconClients = (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
-      <circle cx="8.5" cy="7" r="4"/>
-      <path d="M20 8v6m0 0v6m0-6h-6m6 0h6"/>
-    </svg>
-  );
-  const iconServices = (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.7-3.7a1 1 0 000-1.4l-1.6-1.6a1 1 0 00-1.4 0l-3.7 3.7z"/>
-      <path d="m18.5 2.5.9.9m-11.2 11.2 1.6 1.6a1 1 0 001.4 0l3.7-3.7a1 1 0 000-1.4l-1.6-1.6a1 1 0 00-1.4 0L6.1 13a1 1 0 000 1.4zm.7.7-2.1 2.1m11.2-11.2-2.1 2.1"/>
-    </svg>
-  );
   const iconExternal = (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/>
       <path d="m15 3 6 6m0-6v6h-6"/>
     </svg>
   );
-  // --- FIN DE LA DEFINICIÓN DE ICONOS ---
 
 
   return (
@@ -302,7 +426,6 @@ export default function DashBoard() {
       />
 
       {/* DRAWER */}
-      {/* 2. Pasa los iconos al array 'items' */}
       <AppDrawer   open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         items={[
@@ -313,7 +436,6 @@ export default function DashBoard() {
 
       {/* CONTENIDO */}
       <main className="flex-1 mx-auto max-w-7xl w-full px-4 py-6">
-        {/* ... (Todo tu JSX de la tabla de órdenes va aquí) ... */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h1 className="text-2xl font-bold tracking-tight">Órdenes</h1>
           <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center">
@@ -380,8 +502,9 @@ export default function DashBoard() {
                     <div className="font-medium">{o.service_title}</div>
                   </td>
                   <td className="px-4 py-3 align-top">
-                    <div className="text-xs text-slate-500">Est: ${o.estimated_cost.toLocaleString()}</div>
-                    <div className="font-medium">${(o.final_cost || 0).toLocaleString()}</div>
+                    {/* Formato de moneda chilena (corregido) */}
+                    <div className="text-xs text-slate-500">Est: ${o.estimated_cost.toLocaleString('es-CL', { maximumFractionDigits: 0 })}</div>
+                    <div className="font-medium">${o.final_cost.toLocaleString('es-CL', { maximumFractionDigits: 0 })}</div>
                   </td>
                   <td className="px-4 py-3 align-top">
                     <span
@@ -396,7 +519,15 @@ export default function DashBoard() {
                     </span>
                   </td>
                   <td className="px-4 py-3 align-top text-right">
+                    {/* --- ⭐️ NUEVO: Botón "Ver Detalle" ⭐️ --- */}
                     <div className="flex items-center justify-end gap-2">
+                      <IconButton title="Ver Detalle" onClick={() => openView(o.id)} className="px-2 py-1">
+                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/>
+                          <circle cx="12" cy="12" r="3"/>
+                        </svg>
+                      </IconButton>
+                      {/* --- --------------------------- --- */}
                       <IconButton title="Editar" onClick={() => openEdit(o.id)} className="px-2 py-1">
                         <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
                           <path d="M12 20h9" />
@@ -422,7 +553,7 @@ export default function DashBoard() {
       {/* FOOTER */}
       <AppFooter />
 
-      {/* MODAL */}
+      {/* MODAL EDITAR/CREAR */}
       <Modal
         open={modalOpen}
         title={editing ? "Editar orden" : "Agregar orden"}
@@ -430,7 +561,6 @@ export default function DashBoard() {
         onSubmit={saveForm}
         submitText={saving ? "Guardando..." : editing ? "Guardar cambios" : "Crear orden"}
       >
-        {/* ... (Todo tu JSX del formulario del Modal va aquí) ... */}
          {errMsg && (
           <div className="mb-3 rounded bg-red-100 text-red-700 px-3 py-2 text-sm">{errMsg}</div>
         )}
@@ -525,6 +655,12 @@ export default function DashBoard() {
 
         </form>
       </Modal>
+
+      {/* --- ⭐️ NUEVO: Renderizar el modal de "Ver Detalle" ⭐️ --- */}
+      <ViewOrderModal
+        order={viewingOrder}
+        onClose={closeView}
+      />
     </div>
   );
 }
