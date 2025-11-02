@@ -6,8 +6,8 @@ import AppNavbar from "../components/layout/AppNavbar";
 import AppDrawer from "../components/layout/AppDrawer";
 import AppFooter from "../components/layout/AppFooter";
 
-// --- Helpers UI ---
-
+// (IconButton, PrimaryButton, y Modal de Editar/Crear no cambian)
+// ... (copia tus componentes IconButton, PrimaryButton, y Modal aquí) ...
 function IconButton({ title, onClick, children, className = "" }) {
   return (
     <button
@@ -32,9 +32,6 @@ function PrimaryButton({ title, onClick, children }) {
     </button>
   );
 }
-
-// --- Modal para Editar/Crear ---
-
 function Modal({ open, title, onClose, onSubmit, children, submitText = "Guardar" }) {
   if (!open) return null;
   return (
@@ -66,24 +63,20 @@ function Modal({ open, title, onClose, onSubmit, children, submitText = "Guardar
   );
 }
 
-// --- ⭐️ NUEVO: Modal de solo lectura para Ver Detalle ⭐️ ---
 
+// --- ⭐️ MODAL DE VER DETALLE (ACTUALIZADO) ⭐️ ---
 function ViewOrderModal({ order, onClose }) {
   if (!order) return null;
 
-  // Helper para formatear moneda (con las correcciones que hicimos)
   const formatCurrency = (val) => {
     const num = Number(val);
-    if (isNaN(num)) return "$0"; // Maneja NaN si 'val' no es numérico
+    if (isNaN(num)) return "$0";
     return "$" + num.toLocaleString('es-CL', { maximumFractionDigits: 0 });
   };
   
-  // Helper para formatear fechas
   const formatDate = (dateStr) => {
      if (!dateStr) return "No definida";
-     // Asegura que la fecha se interprete como local, no UTC
      const datePart = dateStr.split('T')[0];
-     // Sumamos 1 día porque al parsear YYYY-MM-DD puede tomar el día anterior por zona horaria
      const date = new Date(datePart);
      date.setMinutes(date.getMinutes() + date.getTimezoneOffset());
      return date.toLocaleDateString('es-CL', {
@@ -91,13 +84,26 @@ function ViewOrderModal({ order, onClose }) {
      });
   };
 
-  // Helper para filas de detalles
   const DetailRow = ({ label, value, className = "" }) => (
     <div className={className}>
       <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{label}</div>
       <div className="text-base text-slate-900">{value || "—"}</div>
     </div>
   );
+  
+  // --- ⭐️ NUEVO: Cálculo de costos de items ⭐️ ---
+  const itemsSubtotal = useMemo(() => {
+    if (!order.order_items || order.order_items.length === 0) {
+      return 0;
+    }
+    return order.order_items.reduce((total, item) => {
+      return total + (Number(item.quantity) * Number(item.price_at_time_of_sale));
+    }, 0);
+  }, [order.order_items]);
+  
+  const serviceCost = Number(order.final_cost) || Number(order.estimated_cost) || 0;
+  const grandTotal = serviceCost + itemsSubtotal;
+  // --- --------------------------------------- ---
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -117,7 +123,7 @@ function ViewOrderModal({ order, onClose }) {
 
         {/* Contenido */}
         <div className="mt-6 space-y-6">
-          {/* Estado */}
+          {/* ... (Estado, Cliente, Vehículo no cambian) ... */}
           <div>
             <span
               className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-bold ${
@@ -130,8 +136,6 @@ function ViewOrderModal({ order, onClose }) {
               {order.status}
             </span>
           </div>
-
-          {/* Cliente */}
           <fieldset>
             <legend className="text-base font-semibold text-slate-800 mb-2 border-b pb-1">Cliente</legend>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -140,8 +144,6 @@ function ViewOrderModal({ order, onClose }) {
               <DetailRow label="Email" value={order.client_email} className="sm:col-span-2" />
             </div>
           </fieldset>
-
-          {/* Vehículo */}
           <fieldset>
             <legend className="text-base font-semibold text-slate-800 mb-2 border-b pb-1">Vehículo</legend>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
@@ -152,19 +154,62 @@ function ViewOrderModal({ order, onClose }) {
               <DetailRow label="VIN (Chasis)" value={order.vehicle_vin} className="sm:col-span-2" />
             </div>
           </fieldset>
-
-          {/* Servicio y Costos */}
+          
+          {/* --- ⭐️ NUEVO: Sección de Productos y Repuestos ⭐️ --- */}
           <fieldset>
-            <legend className="text-base font-semibold text-slate-800 mb-2 border-b pb-1">Servicio y Costos</legend>
+            <legend className="text-base font-semibold text-slate-800 mb-2 border-b pb-1">Productos y Repuestos</legend>
+            {(order.order_items && order.order_items.length > 0) ? (
+              <div className="flow-root">
+                <ul className="divide-y divide-slate-200">
+                  {order.order_items.map(item => (
+                    <li key={item.id} className="py-3 grid grid-cols-3 gap-4 items-center">
+                      <div>
+                        <div className="font-medium text-slate-900">{item.item.name || "Producto no disponible"}</div>
+                        <div className="text-xs text-slate-500">SKU: {item.item.sku || "N/A"}</div>
+                      </div>
+                      <div className="text-sm text-slate-600 text-center">
+                        {item.quantity} x {formatCurrency(item.price_at_time_of_sale)}
+                      </div>
+                      <div className="text-sm font-medium text-slate-900 text-right">
+                        {formatCurrency(item.quantity * item.price_at_time_of_sale)}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                <div className="py-3 flex justify-end">
+                  <div className="text-sm font-semibold text-slate-900">
+                    Subtotal Repuestos: {formatCurrency(itemsSubtotal)}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-sm text-slate-500 italic">No hay productos asignados a esta orden.</div>
+            )}
+          </fieldset>
+          {/* --- ---------------------------------------------- --- */}
+
+
+          {/* --- ⭐️ ACTUALIZADO: Sección de Costos y Servicio ⭐️ --- */}
+          <fieldset>
+            <legend className="text-base font-semibold text-slate-800 mb-2 border-b pb-1">Servicio y Totales</legend>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <DetailRow label="Título del Servicio" value={order.service_title} className="sm:col-span-2" />
               <DetailRow label="Descripción / Notas" value={order.service_description} className="sm:col-span-2" />
               <DetailRow label="Fecha Agendada" value={formatDate(order.scheduled_date)} />
-              <div /> {/* Espacio vacío */}
-              <DetailRow label="Costo Estimado" value={formatCurrency(order.estimated_cost)} />
-              <DetailRow label="Costo Final" value={formatCurrency(order.final_cost)} />
+              <div />
+              
+              {/* Costos desglosados */}
+              <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4 rounded-lg bg-slate-50 p-4 mt-2">
+                <DetailRow label="Costo Servicio (Mano Obra)" value={formatCurrency(serviceCost)} />
+                <DetailRow label="Costo Repuestos" value={formatCurrency(itemsSubtotal)} />
+                <div className="sm:col-span-2 border-t pt-3 mt-3">
+                  <DetailRow label="GRAN TOTAL" value={formatCurrency(grandTotal)} className="text-lg font-bold" />
+                </div>
+              </div>
             </div>
           </fieldset>
+          {/* --- ----------------------------------------------- --- */}
+
         </div>
 
         {/* Pie de página */}
@@ -177,7 +222,7 @@ function ViewOrderModal({ order, onClose }) {
     </div>
   );
 }
-// --- ⭐️ FIN DEL NUEVO MODAL ⭐️ ---
+// --- ------------------------------------------------ ---
 
 
 /* Mapeo de estados (API <-> UI) */
@@ -230,10 +275,8 @@ export default function DashBoard() {
   const [saving, setSaving] = useState(false);
   const [errMsg, setErrMsg] = useState("");
 
-  // --- ⭐️ NUEVO: Estado para el modal de "Ver Detalle" ⭐️ ---
   const [viewModalOpen, setViewModalOpen] = useState(false);
   const [viewingOrder, setViewingOrder] = useState(null);
-  // --- -------------------------------------------------- ---
 
   // Cargar órdenes
   async function loadOrders() {
@@ -253,12 +296,18 @@ export default function DashBoard() {
         service_title: o.service_title,
         service_description: o.service_description || "",
         
-        // CORRECCIÓN: Convertir a Número al cargar
         estimated_cost: Number(o.estimated_cost) || 0,
+        // ⭐️ 'final_cost' ahora es solo para el servicio
         final_cost: Number(o.final_cost) || 0,
+        
+        // ⭐️ NUEVO: Guardamos los items que vienen del API
+        order_items: o.order_items || [],
+        
+        // ⭐️ NUEVO: Guardamos el total calculado por el backend
+        total_cost: Number(o.total_cost) || 0,
 
-        scheduled_date: o.scheduled_date ? o.scheduled_date.split('T')[0] : "", // Formato YYYY-MM-DD
-        status: STATUS[o.status] || "Pendiente", // Convertir a Label
+        scheduled_date: o.scheduled_date ? o.scheduled_date.split('T')[0] : "", 
+        status: STATUS[o.status] || "Pendiente",
         created_at: o.created_at,
       }));
       setOrders(normalized);
@@ -273,6 +322,7 @@ export default function DashBoard() {
 
   // Filtro
   const filtered = useMemo(() => {
+    // ... (Filtro no cambia) ...
     const s = q.trim().toLowerCase();
     if (!s) return orders;
     return orders.filter(
@@ -287,23 +337,18 @@ export default function DashBoard() {
     );
   }, [q, orders]);
 
-  // --- ⭐️ NUEVO: Funciones para abrir/cerrar el modal de "Ver Detalle" ⭐️ ---
+  // --- Funciones para Modales ---
   function openView(id) {
     const o = orders.find((x) => x.id === id);
     if (!o) return;
     setViewingOrder(o);
     setViewModalOpen(true);
   }
-
   function closeView() {
     setViewModalOpen(false);
-    // Pequeño delay para que la animación de salida ocurra antes de quitar los datos
     setTimeout(() => setViewingOrder(null), 300); 
   }
-  // --- ------------------------------------------------------------- ---
 
-
-  // Funciones para modal Editar/Crear
   function openAdd() {
     setErrMsg("");
     setForm(EMPTY_FORM);
@@ -315,10 +360,8 @@ export default function DashBoard() {
     const o = orders.find((x) => x.id === id);
     if (!o) return;
     setErrMsg("");
-    // Hacemos una copia para el formulario
     setForm({
       ...o,
-      // Convertimos 0 a string vacío para los inputs
       final_cost: o.final_cost === 0 ? "" : o.final_cost,
       estimated_cost: o.estimated_cost === 0 ? "" : o.estimated_cost,
     });
@@ -327,6 +370,7 @@ export default function DashBoard() {
   }
 
   async function saveForm() {
+    // ... (lógica de saveForm no cambia)
     if (!form.client_name.trim() || !form.vehicle_model.trim() || !form.service_title.trim()) {
       setErrMsg("Nombre Cliente, Modelo Vehículo y Título Servicio son obligatorios.");
       return;
@@ -366,6 +410,7 @@ export default function DashBoard() {
   }
 
   async function remove(id) {
+    // ... (lógica de remove no cambia)
     if (!confirm("¿Eliminar esta orden?")) return;
     try {
       await apiDelete(`/orders/${id}/`);
@@ -376,7 +421,7 @@ export default function DashBoard() {
     }
   }
 
-  // Handlers
+  // ... (Handlers (handleLogout, onFormChange, etc) no cambian) ...
   const handleLogout = () => {
     localStorage.clear();
     location.href = "/login";
@@ -394,7 +439,7 @@ export default function DashBoard() {
      setForm((f) => ({ ...f, [e.target.name]: e.target.value || null }));
   }
 
-  // Definición de iconos
+  // ... (Definición de iconos no cambia) ...
   const iconOrders = (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/>
@@ -417,15 +462,13 @@ export default function DashBoard() {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
-      {/* NAVBAR */}
+      {/* ... (Navbar y Drawer no cambian) ... */}
       <AppNavbar
         title="Dashboard"
         onOpenDrawer={() => setDrawerOpen(true)}
         onLogout={handleLogout}
         onAlerts={handleAlerts}
       />
-
-      {/* DRAWER */}
       <AppDrawer   open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         items={[
@@ -436,6 +479,7 @@ export default function DashBoard() {
 
       {/* CONTENIDO */}
       <main className="flex-1 mx-auto max-w-7xl w-full px-4 py-6">
+        {/* ... (Header de la página no cambia) ... */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h1 className="text-2xl font-bold tracking-tight">Órdenes</h1>
           <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center">
@@ -463,6 +507,7 @@ export default function DashBoard() {
           </div>
         </div>
 
+        {/* --- ⭐️ TABLA ACTUALIZADA ⭐️ --- */}
         <div className="mt-4 overflow-x-auto rounded-2xl border bg-white shadow-sm">
           <table className="w-full min-w-[800px]">
             <thead className="border-b bg-slate-50 text-xs font-semibold text-slate-500 uppercase">
@@ -470,7 +515,7 @@ export default function DashBoard() {
                 <th className="px-4 py-3 text-left">Cliente</th>
                 <th className="px-4 py-3 text-left">Vehículo</th>
                 <th className="px-4 py-3 text-left">Servicio</th>
-                <th className="px-4 py-3 text-left">Costos</th>
+                <th className="px-4 py-3 text-left">Costo Total</th> {/* 👈 Columna actualizada */}
                 <th className="px-4 py-3 text-left">Estado</th>
                 <th className="px-4 py-3 text-right">Acciones</th>
               </tr>
@@ -490,6 +535,7 @@ export default function DashBoard() {
               )}
               {filtered.map((o) => (
                 <tr key={o.id}>
+                  {/* ... (Cliente, Vehículo, Servicio no cambian) ... */}
                   <td className="px-4 py-3 align-top">
                     <div className="font-medium">{o.client_name}</div>
                     <div className="text-xs text-slate-500">{o.client_phone}</div>
@@ -501,11 +547,13 @@ export default function DashBoard() {
                   <td className="px-4 py-3 align-top">
                     <div className="font-medium">{o.service_title}</div>
                   </td>
+                  
+                  {/* 👈 Columna actualizada: Muestra el "total_cost" (Servicio + Items) */}
                   <td className="px-4 py-3 align-top">
-                    {/* Formato de moneda chilena (corregido) */}
-                    <div className="text-xs text-slate-500">Est: ${o.estimated_cost.toLocaleString('es-CL', { maximumFractionDigits: 0 })}</div>
-                    <div className="font-medium">${o.final_cost.toLocaleString('es-CL', { maximumFractionDigits: 0 })}</div>
+                    <div className="font-medium">${o.total_cost.toLocaleString('es-CL', { maximumFractionDigits: 0 })}</div>
                   </td>
+                  
+                  {/* ... (Estado no cambia) ... */}
                   <td className="px-4 py-3 align-top">
                     <span
                       className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
@@ -518,8 +566,9 @@ export default function DashBoard() {
                       {o.status}
                     </span>
                   </td>
+                  
+                  {/* 👈 Columna actualizada: Se añade el botón de "Ver Detalle" */}
                   <td className="px-4 py-3 align-top text-right">
-                    {/* --- ⭐️ NUEVO: Botón "Ver Detalle" ⭐️ --- */}
                     <div className="flex items-center justify-end gap-2">
                       <IconButton title="Ver Detalle" onClick={() => openView(o.id)} className="px-2 py-1">
                         <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -527,7 +576,6 @@ export default function DashBoard() {
                           <circle cx="12" cy="12" r="3"/>
                         </svg>
                       </IconButton>
-                      {/* --- --------------------------- --- */}
                       <IconButton title="Editar" onClick={() => openEdit(o.id)} className="px-2 py-1">
                         <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
                           <path d="M12 20h9" />
@@ -549,6 +597,8 @@ export default function DashBoard() {
           </table>
         </div>
       </main>
+      {/* --- -------------------- --- */}
+
 
       {/* FOOTER */}
       <AppFooter />
@@ -565,8 +615,8 @@ export default function DashBoard() {
           <div className="mb-3 rounded bg-red-100 text-red-700 px-3 py-2 text-sm">{errMsg}</div>
         )}
         
+        {/* ... (Formulario del modal de edición no cambia) ... */}
         <form className="space-y-6" onSubmit={(e) => e.preventDefault()}>
-          
           <fieldset className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <legend className="text-base font-semibold text-slate-800 mb-2 col-span-full">Información del Cliente</legend>
             <div>
@@ -585,7 +635,6 @@ export default function DashBoard() {
                 className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
             </div>
           </fieldset>
-          
           <fieldset className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <legend className="text-base font-semibold text-slate-800 mb-2 col-span-full">Información del Vehículo</legend>
             <div>
@@ -614,7 +663,6 @@ export default function DashBoard() {
                 className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
             </div>
           </fieldset>
-
           <fieldset>
              <legend className="text-base font-semibold text-slate-800 mb-2 col-span-full">Servicio y Costos</legend>
              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -634,7 +682,7 @@ export default function DashBoard() {
                   className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
               </div>
               <div>
-                <label className="block text-sm text-slate-700 mb-1">Costo Final</label>
+                <label className="block text-sm text-slate-700 mb-1">Costo Final (Mano Obra)</label>
                 <input name="final_cost" type="number" min="0" step="100" value={form.final_cost} onChange={onFormChange}
                   className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
               </div>
@@ -652,11 +700,10 @@ export default function DashBoard() {
               </div>
              </div>
           </fieldset>
-
         </form>
       </Modal>
 
-      {/* --- ⭐️ NUEVO: Renderizar el modal de "Ver Detalle" ⭐️ --- */}
+      {/* MODAL VER DETALLE */}
       <ViewOrderModal
         order={viewingOrder}
         onClose={closeView}

@@ -6,6 +6,8 @@ import AppNavbar from "../components/layout/AppNavbar";
 import AppDrawer from "../components/layout/AppDrawer";
 import AppFooter from "../components/layout/AppFooter";
 
+// (IconButton, PrimaryButton y Modal no cambian, se asumen aquí)
+// ... (copia tus componentes IconButton, PrimaryButton, y Modal aquí) ...
 function IconButton({ title, onClick, children, className = "" }) {
   return (
     <button
@@ -56,6 +58,154 @@ function Modal({ open, title, onClose, onSubmit, children, submitText = "Guardar
   );
 }
 
+// --- ⭐️ NUEVO: Modal para Asignar Item ⭐️ ---
+function AssignItemModal({ item, onClose, onAssigned }) {
+  const [orders, setOrders] = useState([]);
+  const [loadingOrders, setLoadingOrders] = useState(true);
+  const [selectedOrder, setSelectedOrder] = useState("");
+  const [quantity, setQuantity] = useState(1);
+  const [errMsg, setErrMsg] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  // 1. Cargar órdenes activas al abrir el modal
+  useEffect(() => {
+    async function loadActiveOrders() {
+      setLoadingOrders(true);
+      try {
+        const allOrders = await apiGet("/orders/");
+        // Filtramos solo las órdenes que no están "Completado" o "Cancelado"
+        const active = allOrders.filter(o => o.status !== 'done' && o.status !== 'cancelled');
+        setOrders(active);
+        // Seleccionar la primera orden por defecto si existe
+        if (active.length > 0) {
+          setSelectedOrder(active[0].id);
+        }
+      } catch (e) {
+        console.error(e);
+        setErrMsg("No se pudieron cargar las órdenes.");
+      } finally {
+        setLoadingOrders(false);
+      }
+    }
+    loadActiveOrders();
+  }, []);
+
+  // 2. Handler para asignar
+  async function handleAssign() {
+    if (!selectedOrder) {
+      setErrMsg("Debes seleccionar una orden.");
+      return;
+    }
+    if (quantity <= 0) {
+      setErrMsg("La cantidad debe ser mayor a 0.");
+      return;
+    }
+    if (quantity > item.quantity) {
+      setErrMsg(`Stock insuficiente. Disponible: ${item.quantity}`);
+      return;
+    }
+
+    setSaving(true);
+    setErrMsg("");
+    
+    try {
+      // 3. Llamar al nuevo endpoint
+      await apiPost(`/orders/${selectedOrder}/add-item/`, {
+        item_id: item.id,
+        quantity: quantity,
+      });
+      onAssigned(); // Llama a la función del padre para recargar inventario y cerrar
+    } catch (e) {
+      console.error(e);
+      // Intentar leer el error del backend
+      try {
+        const parsed = JSON.parse(e.message);
+        setErrMsg(parsed.error || "Error al asignar el producto.");
+      } catch {
+        setErrMsg("Error al asignar el producto.");
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+  
+  if (!item) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-slate-900">Asignar Producto</h3>
+          <button onClick={onClose} className="rounded p-1 hover:bg-slate-100" title="Cerrar">
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M6 6l12 12M18 6L6 18" />
+            </svg>
+          </button>
+        </div>
+        
+        {errMsg && <div className="mt-4 rounded bg-red-100 text-red-700 px-3 py-2 text-sm">{errMsg}</div>}
+
+        <div className="mt-4 space-y-4">
+          <div>
+            <label className="block text-sm text-slate-700 mb-1">Producto</label>
+            <input 
+              value={`${item.name} (Stock: ${item.quantity})`}
+              disabled 
+              className="w-full rounded-lg border bg-slate-50 px-3 py-2 text-sm"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm text-slate-700 mb-1">Asignar a Orden</label>
+            {loadingOrders ? (
+              <div className="text-sm text-slate-500">Cargando órdenes...</div>
+            ) : (
+              <select 
+                value={selectedOrder} 
+                onChange={(e) => setSelectedOrder(e.target.value)}
+                className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+              >
+                {orders.length === 0 && <option value="">No hay órdenes activas</option>}
+                {orders.map(o => (
+                  <option key={o.id} value={o.id}>
+                    #{o.id} - {o.client_name} ({o.vehicle_model})
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm text-slate-700 mb-1">Cantidad a Asignar</label>
+            <input 
+              type="number" 
+              min="1"
+              max={item.quantity} // No permitir asignar más del stock
+              value={quantity} 
+              onChange={(e) => setQuantity(Number(e.target.value))}
+              className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" 
+            />
+          </div>
+
+        </div>
+        <div className="mt-6 flex justify-end gap-2">
+          <button onClick={onClose} className="rounded-lg border px-4 py-2 text-sm hover:bg-slate-50">Cancelar</button>
+          <button 
+            onClick={handleAssign}
+            disabled={saving || loadingOrders || orders.length === 0}
+            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+          >
+            {saving ? "Asignando..." : "Asignar"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+// --- ⭐️ FIN Modal Asignar ⭐️ ---
+
+
 const STATUS = { active: "Activo", inactive: "Inactivo", out: "Sin stock" };
 const STATUS_FROM_LABEL = { Activo: "active", Inactivo: "inactive", "Sin stock": "out" };
 
@@ -74,6 +224,12 @@ export default function Inventory() {
   });
   const [saving, setSaving] = useState(false);
   const [errMsg, setErrMsg] = useState("");
+  
+  // --- ⭐️ NUEVO: Estados para el modal de Asignar ⭐️ ---
+  const [assignModalOpen, setAssignModalOpen] = useState(false);
+  const [assigningItem, setAssigningItem] = useState(null);
+  // --- ------------------------------------------- ---
+
 
   async function loadInventory() {
     setLoadingList(true);
@@ -111,6 +267,7 @@ export default function Inventory() {
     );
   }, [q, items]);
 
+  // --- Funciones para modal Editar/Crear ---
   function openAdd() {
     setErrMsg("");
     setForm({ name: "", sku: "", quantity: 0, price: 0, category: "", location: "", status: "Activo" });
@@ -121,12 +278,33 @@ export default function Inventory() {
     const it = items.find((x) => x.id === id);
     if (!it) return;
     setErrMsg("");
-    setForm({ ...it }); // ya está en labels
+    setForm({ ...it });
     setEditing(it.id);
     setModalOpen(true);
   }
 
+  // --- ⭐️ NUEVO: Funciones para modal Asignar ⭐️ ---
+  function openAssign(id) {
+    const it = items.find((x) => x.id === id);
+    if (!it) return;
+    if (it.quantity <= 0) {
+      alert("No hay stock de este producto para asignar.");
+      return;
+    }
+    setAssigningItem(it);
+    setAssignModalOpen(true);
+  }
+  
+  function handleOnAssigned() {
+    setAssignModalOpen(false);
+    setAssigningItem(null);
+    loadInventory(); // Recargar inventario para ver el nuevo stock
+  }
+  // --- ------------------------------------ ---
+
+
   async function saveForm() {
+    // ... (lógica de saveForm no cambia)
     if (!form.name.trim() || !form.sku.trim()) {
       setErrMsg("Nombre y SKU son obligatorios.");
       return;
@@ -161,6 +339,7 @@ export default function Inventory() {
   }
 
   async function remove(id) {
+    // ... (lógica de remove no cambia)
     if (!confirm("¿Eliminar este producto?")) return;
     try {
       await apiDelete(`/inventory/${id}/`);
@@ -189,6 +368,7 @@ export default function Inventory() {
       <AppDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} items={drawerItems} />
 
       <main className="flex-1 mx-auto max-w-7xl w-full px-4 py-6">
+        {/* ... (Header no cambia) ... */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h1 className="text-2xl font-bold tracking-tight">Productos</h1>
           <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center">
@@ -216,6 +396,7 @@ export default function Inventory() {
         </div>
 
         <div className="mt-4 overflow-hidden rounded-2xl border bg-white shadow-sm">
+          {/* ... (Cabecera de la tabla no cambia) ... */}
           <div className="hidden md:grid grid-cols-12 gap-4 border-b bg-slate-50 px-4 py-3 text-xs font-semibold text-slate-500">
             <div className="col-span-3">Nombre</div>
             <div className="col-span-2">SKU</div>
@@ -230,15 +411,14 @@ export default function Inventory() {
           <ul className="divide-y">
             {filtered.map((p) => (
               <li key={p.id} className="grid grid-cols-1 md:grid-cols-12 gap-2 px-4 py-4">
+                {/* ... (Datos de la fila no cambian) ... */}
                 <div className="md:col-span-3">
                   <div className="font-medium">{p.name}</div>
                   <div className="text-xs text-slate-500">Cat: {p.category || "—"} · Ubicación: {p.location || "—"}</div>
                 </div>
                 <div className="md:col-span-2 text-slate-700">{p.sku}</div>
                 <div className="md:col-span-2 text-slate-700">{p.quantity}</div>
-                {/* ----- ⬇️ AQUÍ ESTÁ EL CAMBIO ⬇️ ----- */}
                 <div className="md:col-span-2 text-slate-700">${p.price.toLocaleString('es-CL', { maximumFractionDigits: 0 })}</div>
-                {/* ----- ⬆️ AQUÍ ESTÁ EL CAMBIO ⬆️ ----- */}
                 <div className="md:col-span-2">
                   <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
                     p.status === "Activo" ? "bg-emerald-100 text-emerald-700"
@@ -248,7 +428,14 @@ export default function Inventory() {
                     {p.status}
                   </span>
                 </div>
+                
+                {/* --- ⭐️ NUEVO: Grupo de botones de acción ⭐️ --- */}
                 <div className="md:col-span-1 flex items-center justify-end gap-2">
+                  <IconButton title="Asignar a Orden" onClick={() => openAssign(p.id)} className="px-2 py-1" disabled={p.quantity <= 0}>
+                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M12 5v14M5 12h14" />
+                    </svg>
+                  </IconButton>
                   <IconButton title="Editar" onClick={() => openEdit(p.id)} className="px-2 py-1">
                     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M12 20h9" />
@@ -263,6 +450,8 @@ export default function Inventory() {
                     </svg>
                   </IconButton>
                 </div>
+                {/* --- -------------------------------------- --- */}
+
               </li>
             ))}
             {!loadingList && filtered.length === 0 && (
@@ -282,6 +471,7 @@ export default function Inventory() {
         onSubmit={saveForm}
         submitText={saving ? "Guardando..." : editing ? "Guardar cambios" : "Crear producto"}
       >
+        {/* ... (Contenido del modal de edición no cambia) ... */}
         {errMsg && <div className="mb-3 rounded bg-red-100 text-red-700 px-3 py-2 text-sm">{errMsg}</div>}
         <div className="grid gap-4">
           <div>
@@ -333,6 +523,15 @@ export default function Inventory() {
           </div>
         </div>
       </Modal>
+      
+      {/* --- ⭐️ NUEVO: Renderizar modal de Asignar ⭐️ --- */}
+      {assignModalOpen && (
+        <AssignItemModal
+          item={assigningItem}
+          onClose={() => setAssignModalOpen(false)}
+          onAssigned={handleOnAssigned}
+        />
+      )}
     </div>
   );
 }
