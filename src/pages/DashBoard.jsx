@@ -464,7 +464,7 @@ export default function DashBoard() {
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
       {/* ... (Navbar y Drawer no cambian) ... */}
       <AppNavbar
-        title="Dashboard"
+        title="Panel principal"
         onOpenDrawer={() => setDrawerOpen(true)}
         onLogout={handleLogout}
         onAlerts={handleAlerts}

@@ -29,7 +29,7 @@ export default function ExternalMarket() {
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
       <AppNavbar
-        title="Marketplace de Servicios"
+        title="Servicios"
         onOpenDrawer={() => setDrawerOpen(true)}
         onLogout={() => {
           localStorage.clear();

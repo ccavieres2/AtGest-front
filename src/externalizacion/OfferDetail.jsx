@@ -570,6 +570,7 @@ export default function OfferDetail() {
       {/* --- Modal del Calendario (para el modo edición) --- */}
       <Transition appear show={isModalOpen} as={Fragment}>
         <Dialog as="div" className="relative z-50" onClose={() => setIsModalOpen(false)}>
+          
           <Transition.Child
             as={Fragment}
             enter="ease-out duration-300"
@@ -579,8 +580,11 @@ export default function OfferDetail() {
             leaveFrom="opacity-100"
             leaveTo="opacity-0"
           >
-            <div className="fixed inset-0 bg-black bg-opacity-40" />
+            {/* --- CAMBIO AQUÍ --- */}
+            <div className="fixed inset-0 bg-black/25" />
+            {/* --- FIN DEL CAMBIO --- */}
           </Transition.Child>
+          
           <div className="fixed inset-0 overflow-y-auto">
             <div className="flex min-h-full items-center justify-center p-4 text-center">
               <Transition.Child
