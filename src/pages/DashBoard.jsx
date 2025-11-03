@@ -203,7 +203,7 @@ function ViewOrderModal({ order, onClose }) {
                 <DetailRow label="Costo Servicio (Mano Obra)" value={formatCurrency(serviceCost)} />
                 <DetailRow label="Costo Repuestos" value={formatCurrency(itemsSubtotal)} />
                 <div className="sm:col-span-2 border-t pt-3 mt-3">
-                  <DetailRow label="GRAN TOTAL" value={formatCurrency(grandTotal)} className="text-lg font-bold" />
+                  <DetailRow label="GASTO TOTAL" value={formatCurrency(grandTotal)} className="text-lg font-bold" />
                 </div>
               </div>
             </div>

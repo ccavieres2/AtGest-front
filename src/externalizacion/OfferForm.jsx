@@ -246,10 +246,9 @@ export default function OfferForm() {
   }
 
   const drawerItems = [
-    { label: "Marketplace", onClick: () => navigate("/external") },
-    { label: "Publicar servicio", onClick: () => navigate("/externalnew") },
-    { label: "Inventario", onClick: () => navigate("/inventory") },
-    { label: "Órdenes", onClick: () => navigate("/dashboard") },
+          { label: "Órdenes", onClick: () => navigate("/dashboard")},
+          { label: "Inventario", onClick: () => navigate("/inventory")},
+          { label: "Externalización", onClick: () => navigate("/external")},
   ];
 
   return (

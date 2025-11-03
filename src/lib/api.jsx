@@ -16,7 +16,7 @@ function handleExpiredSession() {
 async function request(method, path, data = null, isMultipart = false) {
   const token = localStorage.getItem("access");
   const headers = isMultipart
-    ? { ...authHeaders() }
+    ? { ...authHeaders() } // Para multipart, no ponemos 'Content-Type', el navegador lo hace.
     : {
         "Content-Type": "application/json",
         ...authHeaders(),
@@ -32,16 +32,22 @@ async function request(method, path, data = null, isMultipart = false) {
 
   if (res.status === 401 && token) {
     handleExpiredSession();
-    return;
+    // Lanzamos un error para detener la ejecución de la lógica 'try/catch'
+    throw new Error("Sesión expirada."); 
   }
 
   const contentType = res.headers.get("content-type") || "";
+  // Si no hay contenido (ej: DELETE 204), devolvemos un objeto vacío
+  if (res.status === 204) {
+    return {};
+  }
+  
   const payload = contentType.includes("application/json") ? await res.json() : null;
 
   if (!res.ok) {
     const errorMsg =
       (payload && (payload.detail || payload.message)) ||
-      JSON.stringify(payload) ||
+      (payload && JSON.stringify(payload)) || // Convertir objeto de error a string
       "Error en la solicitud";
     throw new Error(errorMsg);
   }
@@ -49,8 +55,11 @@ async function request(method, path, data = null, isMultipart = false) {
   return payload;
 }
 
-// ✅ Exporta función especial para multipart
+// ✅ Exporta función especial para multipart (Crear)
 export const apiPostMultipart = (path, formData) => request("POST", path, formData, true);
+
+// ⭐️ NUEVO: Exporta función especial para multipart (Actualizar) ⭐️
+export const apiPatchMultipart = (path, formData) => request("PATCH", path, formData, true);
 
 export const apiGet = (path) => request("GET", path);
 export const apiPost = (path, data) => request("POST", path, data);

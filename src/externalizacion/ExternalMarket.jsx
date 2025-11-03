@@ -13,7 +13,16 @@ export default function ExternalMarket() {
 
   useEffect(() => {
     apiGet("/external-services/")
-      .then(setServices)
+      .then(data => {
+        // ----- ⬇️ AQUÍ ESTÁ EL CAMBIO 1 ⬇️ -----
+        // Convertimos el precio (que es un string) a un número al cargarlo
+        const normalizedData = data.map(srv => ({
+          ...srv,
+          price: Number(srv.price) || 0 // Si es inválido, lo dejamos en 0
+        }));
+        setServices(normalizedData);
+        // ----- ⬆️ AQUÍ ESTÁ EL CAMBIO 1 ⬆️ -----
+      })
       .catch(() => alert("No se pudieron cargar los servicios externos."));
   }, []);
 
@@ -28,7 +37,6 @@ export default function ExternalMarket() {
         }}
       />
 
-      {/* 👇 1. Botón "Publicar servicio" ELIMINADO de aquí */}
       <AppDrawer
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
@@ -40,7 +48,6 @@ export default function ExternalMarket() {
       />
 
       <main className="flex-1 mx-auto max-w-7xl w-full px-4 py-6">
-        {/* 👇 2. Encabezado AÑADIDO (similar a Dashboard) */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
           <h1 className="text-2xl font-bold tracking-tight">Servicios disponibles</h1>
           <button
@@ -55,7 +62,6 @@ export default function ExternalMarket() {
           </button>
         </div>
 
-        {/* 3. Grid de servicios (sin cambios) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
           {services.map((srv) => (
             <div
@@ -80,7 +86,11 @@ export default function ExternalMarket() {
                 <p className="text-sm text-gray-600 line-clamp-2">
                   {srv.description}
                 </p>
-                <div className="text-indigo-600 font-bold mt-2">${srv.price}</div>
+                {/* ----- ⬇️ AQUÍ ESTÁ EL CAMBIO 2 ⬇️ ----- */}
+                <div className="text-indigo-600 font-bold mt-2">
+                  ${srv.price.toLocaleString('es-CL', { maximumFractionDigits: 0 })}
+                </div>
+                {/* ----- ⬆️ AQUÍ ESTÁ EL CAMBIO 2 ⬆️ ----- */}
                 <button
                   onClick={() => navigate(`/external/${srv.id}`)}
                   className="text-indigo-600 hover:underline text-sm mt-2"
