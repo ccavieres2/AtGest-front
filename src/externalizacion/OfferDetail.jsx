@@ -1,4 +1,4 @@
-// src/externalization/OfferDetail.jsx
+// src/externalizacion/OfferDetail.jsx
 import { useEffect, useState, useMemo, Fragment } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { apiGet, apiDelete, apiPatchMultipart } from "../lib/api"; 
@@ -15,6 +15,9 @@ import esES from "date-fns/locale/es";
 // --- Imports del Modal de Headless UI ---
 import { Dialog, Transition } from '@headlessui/react';
 // ----------------------------------------
+
+// 👈 1. Importar el nuevo modal de contratación
+import ContratarModal from "./ContratarModal";
 
 // --- Configuración del Calendario ---
 const locales = { "es": esES };
@@ -72,8 +75,11 @@ export default function OfferDetail() {
   const [saving, setSaving] = useState(false);
   const [errMsg, setErrMsg] = useState("");
   const [okMsg, setOkMsg] = useState("");
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false); // Modal para EDITAR horario
   const [currentEvent, setCurrentEvent] = useState(null); 
+  
+  // 👈 2. Añadir estado para el nuevo modal de CONTRATACIÓN
+  const [isContratarModalOpen, setIsContratarModalOpen] = useState(false);
   // --- ------- ---
 
 
@@ -94,12 +100,17 @@ export default function OfferDetail() {
           duration_minutes: data.duration_minutes || "",
           available: data.available,
         });
-        setEvents(data.available_hours.map((event, i) => ({
-          id: i, 
+        
+        // 👈 3. CAMBIO: Usar el timestamp como ID estable
+        // Esto es crucial para que el modal 'ContratarModal' identifique el evento
+        setEvents(data.available_hours.map((event) => ({
+          id: new Date(event.start).getTime(), // Usamos timestamp como ID
           title: event.title || "Disponible", 
           start: new Date(event.start),
           end: new Date(event.end),
         })));
+        // --- ---------------------------------------
+
         setImagePreview(data.image || null);
       })
       .catch(() => alert("No se pudo cargar el detalle del servicio."))
@@ -127,8 +138,9 @@ export default function OfferDetail() {
     showMore: total => `+ Ver ${total} más`,
   }), []);
 
-  // Handlers del Calendario
+  // Handlers del Calendario (Modo Edición)
   const handleSelectSlot = ({ start, end }) => {
+    // 👈 4. CAMBIO: Usar timestamp como ID
     setCurrentEvent({ id: Date.now(), title: "Horario disponible", start, end });
     setIsModalOpen(true);
   };
@@ -143,7 +155,7 @@ export default function OfferDetail() {
     setEvents((prev) => prev.map((e) => e.id === event.id ? { ...e, start, end } : e));
   };
   
-  // Handlers del Modal del Calendario
+  // Handlers del Modal del Calendario (Modo Edición)
   const pad = (num) => num.toString().padStart(2, '0');
   const toDatetimeLocal = (date) => {
     if (!date || !(date instanceof Date)) return '';
@@ -174,14 +186,21 @@ export default function OfferDetail() {
       alert("La fecha de fin debe ser posterior a la fecha de inicio.");
       return;
     }
+    
+    // 👈 5. CAMBIO: Asignar nuevo timestamp si es un evento nuevo
+    const eventToSave = {
+        ...currentEvent,
+        id: currentEvent.id || Date.now() 
+    };
+
     setEvents((prev) => {
-      const existingIndex = prev.findIndex((e) => e.id === currentEvent.id);
+      const existingIndex = prev.findIndex((e) => e.id === eventToSave.id);
       if (existingIndex > -1) {
         const newEvents = [...prev];
-        newEvents[existingIndex] = currentEvent;
+        newEvents[existingIndex] = eventToSave;
         return newEvents;
       } else {
-        return [...prev, currentEvent];
+        return [...prev, eventToSave];
       }
     });
     setIsModalOpen(false);
@@ -215,6 +234,7 @@ export default function OfferDetail() {
       formData.append("available", form.available);
 
       const availabilityData = events.map(ev => ({
+        // El 'id' (timestamp) no es necesario para el backend, solo start y end
         title: ev.title,
         start: ev.start.toISOString(),
         end: ev.end.toISOString(),
@@ -232,13 +252,18 @@ export default function OfferDetail() {
       setImagePreview(updatedService.image || null);
       setImageFile(null); 
       setIsEditing(false); // Salimos del modo edición
+      
+      // 👈 6. CAMBIO: Recargar eventos con los nuevos IDs
+      setEvents(updatedService.available_hours.map((event) => ({
+          id: new Date(event.start).getTime(),
+          title: event.title || "Disponible", 
+          start: new Date(event.start),
+          end: new Date(event.end),
+      })));
 
-      // ----- ⬇️ AQUÍ ESTÁ EL CAMBIO ⬇️ -----
-      // Limpiar el mensaje de éxito después de 8 segundos
       setTimeout(() => {
         setOkMsg("");
-      }, 8000); // 8000 milisegundos = 8 segundos
-      // ----- ⬆️ AQUÍ ESTÁ EL CAMBIO ⬆️ -----
+      }, 8000); 
 
     } catch (err) {
       console.error(err);
@@ -262,6 +287,7 @@ export default function OfferDetail() {
     setIsEditing(false);
     setErrMsg("");
     setOkMsg("");
+    // Revertir formulario y eventos a como estaban en 'service'
     setForm({
       title: service.title,
       description: service.description,
@@ -270,8 +296,8 @@ export default function OfferDetail() {
       duration_minutes: service.duration_minutes || "",
       available: service.available,
     });
-    setEvents(service.available_hours.map((event, i) => ({
-      id: i, 
+    setEvents(service.available_hours.map((event) => ({
+      id: new Date(event.start).getTime(), 
       title: event.title || "Disponible", 
       start: new Date(event.start),
       end: new Date(event.end),
@@ -328,7 +354,8 @@ export default function OfferDetail() {
         
         // --- MODO EDICIÓN ---
         <main className="flex-1 mx-auto max-w-5xl w-full px-4 py-6">
-          <form onSubmit={handleSaveSubmit} className="space-y-6 bg-white p-6 rounded-2xl shadow">
+           {/* Todo este bloque de formulario no cambia */}
+           <form onSubmit={handleSaveSubmit} className="space-y-6 bg-white p-6 rounded-2xl shadow">
             
             <h1 className="text-2xl font-bold mb-4">✍️ Editando Servicio</h1>
             
@@ -397,7 +424,6 @@ export default function OfferDetail() {
               </div>
             </fieldset>
 
-            {/* --- ZONA DEL CALENDARIO (Editable) --- */}
             <fieldset>
               <legend className="block text-sm font-medium mb-2">Horarios Disponibles</legend>
               <p className="text-xs text-gray-500 mb-3">
@@ -427,7 +453,6 @@ export default function OfferDetail() {
               </div>
             </fieldset>
 
-            {/* --- Botones de Guardar / Cancelar --- */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <input
@@ -466,7 +491,6 @@ export default function OfferDetail() {
         // --- MODO VISTA ---
         <main className="flex-1 mx-auto max-w-5xl w-full px-4 py-8">
           
-          {/* ⭐️ El mensaje de éxito se mostrará aquí ⭐️ */}
           {okMsg && <div className="p-3 bg-green-100 text-green-800 rounded mb-4">{okMsg}</div>}
 
           {service.image && (
@@ -494,7 +518,6 @@ export default function OfferDetail() {
               <p><strong>Disponible:</strong> {service.available ? "Sí" : "No"}</p>
             </div>
 
-            {/* Calendario de solo lectura */}
             <div>
               <h2 className="text-lg font-semibold mt-4 mb-2">Horarios Disponibles</h2>
               <div className="p-2 border rounded-lg bg-white" style={{ height: "600px" }}>
@@ -516,11 +539,7 @@ export default function OfferDetail() {
                   min={set(new Date(0), { hours: 0, minutes: 0 })}
                   max={set(new Date(0), { hours: 23, minutes: 59 })}
                   components={{ 
-                    toolbar: ({ label }) => (
-                      <div className="rbc-toolbar p-2 flex justify-center items-center">
-                        <div className="rbc-toolbar-label text-lg font-semibold">{label}</div>
-                      </div>
-                    )
+                    toolbar: CustomToolbar // Usamos el toolbar con navegación
                   }}
                 />
               </div>
@@ -531,18 +550,16 @@ export default function OfferDetail() {
           <div className="mt-6 flex items-center gap-4">
             {isOwner ? (
               <>
-                {/* ----- ⬇️ AQUÍ ESTÁ EL CAMBIO ⬇️ ----- */}
                 <button
                   className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
                   onClick={() => {
                     setIsEditing(true);
-                    setOkMsg("");  // Limpia el mensaje de éxito al entrar a editar
-                    setErrMsg(""); // Limpia el mensaje de error al entrar a editar
+                    setOkMsg(""); 
+                    setErrMsg(""); 
                   }}
                 >
                   Editar mi publicación
                 </button>
-                {/* ----- ⬆️ AQUÍ ESTÁ EL CAMBIO ⬆️ ----- */}
                 
                 <button
                   className="bg-red-600 text-white px-6 py-2 rounded hover:bg-red-700 disabled:opacity-50"
@@ -553,11 +570,13 @@ export default function OfferDetail() {
                 </button>
               </>
             ) : (
+              // 👈 7. CAMBIO EN EL BOTÓN "CONTRATAR"
               <button
-                className="mt-6 bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700"
-                onClick={() => alert("Lógica para contratar servicio")}
+                className="mt-6 bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700 disabled:opacity-50"
+                onClick={() => setIsContratarModalOpen(true)} // Abre el nuevo modal
+                disabled={!service.available || events.length === 0} // Deshabilitar si no está disponible o no hay horarios
               >
-                Contratar este servicio
+                {service.available && events.length > 0 ? "Contratar este servicio" : "Servicio no disponible"}
               </button>
             )}
           </div>
@@ -567,10 +586,10 @@ export default function OfferDetail() {
 
       <AppFooter />
 
-      {/* --- Modal del Calendario (para el modo edición) --- */}
+      {/* --- Modal del Calendario (para el modo EDICIÓN) --- */}
       <Transition appear show={isModalOpen} as={Fragment}>
+        {/* ... (Este modal no cambia en absoluto) ... */}
         <Dialog as="div" className="relative z-50" onClose={() => setIsModalOpen(false)}>
-          
           <Transition.Child
             as={Fragment}
             enter="ease-out duration-300"
@@ -580,11 +599,8 @@ export default function OfferDetail() {
             leaveFrom="opacity-100"
             leaveTo="opacity-0"
           >
-            {/* --- CAMBIO AQUÍ --- */}
             <div className="fixed inset-0 bg-black/25" />
-            {/* --- FIN DEL CAMBIO --- */}
           </Transition.Child>
-          
           <div className="fixed inset-0 overflow-y-auto">
             <div className="flex min-h-full items-center justify-center p-4 text-center">
               <Transition.Child
@@ -642,7 +658,6 @@ export default function OfferDetail() {
                       />
                     </div>
                   </div>
-
                   <div className="mt-6 flex justify-between items-center">
                     {events.find(e => e.id === currentEvent?.id) ? (
                       <button
@@ -678,7 +693,17 @@ export default function OfferDetail() {
           </div>
         </Dialog>
       </Transition>
-      {/* --- ----------------------------------------------- --- */}
+
+      {/* 👈 8. RENDERIZAR EL NUEVO MODAL DE CONTRATACIÓN */}
+      {/* Nos aseguramos de no dar error si el servicio aún no ha cargado */}
+      {service && (
+        <ContratarModal 
+          isOpen={isContratarModalOpen}
+          onClose={() => setIsContratarModalOpen(false)}
+          service={service}
+          events={events} // Le pasamos los eventos (horarios)
+        />
+      )}
 
     </div>
   );

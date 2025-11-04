@@ -6,8 +6,12 @@ import AppNavbar from "../components/layout/AppNavbar";
 import AppDrawer from "../components/layout/AppDrawer";
 import AppFooter from "../components/layout/AppFooter";
 
+// 👈 1. IMPORTACIONES AÑADIDAS para formatear fechas
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale/es';
+
+
 // (IconButton, PrimaryButton, y Modal de Editar/Crear no cambian)
-// ... (copia tus componentes IconButton, PrimaryButton, y Modal aquí) ...
 function IconButton({ title, onClick, children, className = "" }) {
   return (
     <button
@@ -76,13 +80,24 @@ function ViewOrderModal({ order, onClose }) {
   
   const formatDate = (dateStr) => {
      if (!dateStr) return "No definida";
-     const datePart = dateStr.split('T')[0];
-     const date = new Date(datePart);
+     // Previene el error de "Invalid Date" si la fecha ya viene en formato YYYY-MM-DD
+     const dateValue = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
+     const date = new Date(dateValue);
+     // Ajusta la zona horaria (importante para fechas 'date' puras)
      date.setMinutes(date.getMinutes() + date.getTimezoneOffset());
      return date.toLocaleDateString('es-CL', {
-        year: 'numeric', month: 'long', day: 'numeric'
+       year: 'numeric', month: 'long', day: 'numeric'
      });
   };
+  
+  // 👈 2. NUEVA FUNCIÓN para formatear fecha y hora
+  const formatDateTime = (dateStr) => {
+    if (!dateStr) return "No definida";
+    const date = new Date(dateStr);
+    // Formato: lun 03/11/25 a las 14:30h
+    return format(date, "EEE dd/MM/yy 'a las' HH:mm'h'", { locale: es });
+  };
+
 
   const DetailRow = ({ label, value, className = "" }) => (
     <div className={className}>
@@ -91,7 +106,7 @@ function ViewOrderModal({ order, onClose }) {
     </div>
   );
   
-  // --- ⭐️ NUEVO: Cálculo de costos de items ⭐️ ---
+  // Cálculo de costos de items (tu código)
   const itemsSubtotal = useMemo(() => {
     if (!order.order_items || order.order_items.length === 0) {
       return 0;
@@ -100,9 +115,23 @@ function ViewOrderModal({ order, onClose }) {
       return total + (Number(item.quantity) * Number(item.price_at_time_of_sale));
     }, 0);
   }, [order.order_items]);
+
+  // 👈 3. NUEVO: Cálculo de costos de servicios externos
+  const servicesSubtotal = useMemo(() => {
+    // Usamos 'service_bookings' (del serializer)
+    if (!order.service_bookings || order.service_bookings.length === 0) {
+      return 0;
+    }
+    return order.service_bookings.reduce((total, booking) => {
+      return total + Number(booking.price_at_booking);
+    }, 0);
+  }, [order.service_bookings]);
+  
   
   const serviceCost = Number(order.final_cost) || Number(order.estimated_cost) || 0;
-  const grandTotal = serviceCost + itemsSubtotal;
+  
+  // 👈 4. ACTUALIZADO: Cálculo del Gran Total
+  const grandTotal = serviceCost + itemsSubtotal + servicesSubtotal;
   // --- --------------------------------------- ---
 
   return (
@@ -130,6 +159,9 @@ function ViewOrderModal({ order, onClose }) {
                 order.status === "Completado" ? "bg-emerald-100 text-emerald-700"
                 : order.status === "En Taller" ? "bg-amber-100 text-amber-700"
                 : order.status === "Cancelado" ? "bg-red-100 text-red-700"
+                // 👈 5. AÑADIDOS: Tus otros estados
+                : order.status === "Esperando Aprobación" ? "bg-blue-100 text-blue-700"
+                : order.status === "Esperando Repuestos" ? "bg-purple-100 text-purple-700"
                 : "bg-slate-100 text-slate-700"
               }`}
             >
@@ -155,7 +187,7 @@ function ViewOrderModal({ order, onClose }) {
             </div>
           </fieldset>
           
-          {/* --- ⭐️ NUEVO: Sección de Productos y Repuestos ⭐️ --- */}
+          {/* --- Sección de Productos y Repuestos (Tu código) --- */}
           <fieldset>
             <legend className="text-base font-semibold text-slate-800 mb-2 border-b pb-1">Productos y Repuestos</legend>
             {(order.order_items && order.order_items.length > 0) ? (
@@ -164,8 +196,8 @@ function ViewOrderModal({ order, onClose }) {
                   {order.order_items.map(item => (
                     <li key={item.id} className="py-3 grid grid-cols-3 gap-4 items-center">
                       <div>
-                        <div className="font-medium text-slate-900">{item.item.name || "Producto no disponible"}</div>
-                        <div className="text-xs text-slate-500">SKU: {item.item.sku || "N/A"}</div>
+                        <div className="font-medium text-slate-900">{item.item?.name || "Producto no disponible"}</div>
+                        <div className="text-xs text-slate-500">SKU: {item.item?.sku || "N/A"}</div>
                       </div>
                       <div className="text-sm text-slate-600 text-center">
                         {item.quantity} x {formatCurrency(item.price_at_time_of_sale)}
@@ -188,6 +220,40 @@ function ViewOrderModal({ order, onClose }) {
           </fieldset>
           {/* --- ---------------------------------------------- --- */}
 
+          {/* --- 👈 6. NUEVO: Sección de Servicios Externos ⭐️ --- */}
+          <fieldset>
+            <legend className="text-base font-semibold text-slate-800 mb-2 border-b pb-1">Servicios Externos Contratados</legend>
+            {/* Usamos 'service_bookings' (del serializer) */}
+            {(order.service_bookings && order.service_bookings.length > 0) ? (
+              <div className="flow-root">
+                <ul className="divide-y divide-slate-200">
+                  {order.service_bookings.map(booking => (
+                    <li key={booking.id} className="py-3 grid grid-cols-3 gap-4 items-center">
+                      <div>
+                        <div className="font-medium text-slate-900">{booking.title_at_booking}</div>
+                        <div className="text-xs text-slate-500">Agendado: {formatDateTime(booking.start_time)}</div>
+                      </div>
+                      <div className="text-sm text-slate-600 text-center">
+                        1 x {formatCurrency(booking.price_at_booking)}
+                      </div>
+                      <div className="text-sm font-medium text-slate-900 text-right">
+                        {formatCurrency(booking.price_at_booking)}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                <div className="py-3 flex justify-end">
+                  <div className="text-sm font-semibold text-slate-900">
+                    Subtotal Servicios: {formatCurrency(servicesSubtotal)}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-sm text-slate-500 italic">No hay servicios externos contratados.</div>
+            )}
+          </fieldset>
+          {/* --- ----------------------------------------------- --- */}
+
 
           {/* --- ⭐️ ACTUALIZADO: Sección de Costos y Servicio ⭐️ --- */}
           <fieldset>
@@ -198,11 +264,13 @@ function ViewOrderModal({ order, onClose }) {
               <DetailRow label="Fecha Agendada" value={formatDate(order.scheduled_date)} />
               <div />
               
-              {/* Costos desglosados */}
-              <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4 rounded-lg bg-slate-50 p-4 mt-2">
+              {/* 👈 7. ACTUALIZADO: Costos desglosados */}
+              <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-3 gap-4 rounded-lg bg-slate-50 p-4 mt-2">
                 <DetailRow label="Costo Servicio (Mano Obra)" value={formatCurrency(serviceCost)} />
                 <DetailRow label="Costo Repuestos" value={formatCurrency(itemsSubtotal)} />
-                <div className="sm:col-span-2 border-t pt-3 mt-3">
+                <DetailRow label="Costo Servicios Externos" value={formatCurrency(servicesSubtotal)} />
+                
+                <div className="sm:col-span-3 border-t pt-3 mt-3">
                   <DetailRow label="GASTO TOTAL" value={formatCurrency(grandTotal)} className="text-lg font-bold" />
                 </div>
               </div>
@@ -297,13 +365,17 @@ export default function DashBoard() {
         service_description: o.service_description || "",
         
         estimated_cost: Number(o.estimated_cost) || 0,
-        // ⭐️ 'final_cost' ahora es solo para el servicio
+        // 'final_cost' es solo para el servicio/mano de obra
         final_cost: Number(o.final_cost) || 0,
         
-        // ⭐️ NUEVO: Guardamos los items que vienen del API
+        // Guardamos los items que vienen del API
         order_items: o.order_items || [],
         
-        // ⭐️ NUEVO: Guardamos el total calculado por el backend
+        // 👈 8. NUEVO: Guardamos los servicios que vienen del API
+        // (El nombre 'service_bookings' viene de tu serializers.py)
+        service_bookings: o.service_bookings || [],
+        
+        // Guardamos el total calculado por el backend
         total_cost: Number(o.total_cost) || 0,
 
         scheduled_date: o.scheduled_date ? o.scheduled_date.split('T')[0] : "", 
@@ -529,7 +601,7 @@ export default function DashBoard() {
               {!loadingList && filtered.length === 0 && (
                 <tr>
                   <td colSpan="6" className="px-4 py-8 text-center text-slate-500">
-                    No hay resultados para “{q}”.
+                    {q ? `No hay resultados para “${q}”.` : "No hay órdenes creadas."}
                   </td>
                 </tr>
               )}
@@ -541,14 +613,14 @@ export default function DashBoard() {
                     <div className="text-xs text-slate-500">{o.client_phone}</div>
                   </td>
                   <td className="px-4 py-3 align-top">
-                    <div className="font-medium">{o.vehicle_make} {o.vehicle_model} ({o.vehicle_year})</div>
+                    <div className="font-medium">{o.vehicle_make} {o.vehicle_model} ({o.vehicle_year || 'S/A'})</div>
                     <div className="text-xs text-slate-500">{o.vehicle_plate}</div>
                   </td>
                   <td className="px-4 py-3 align-top">
                     <div className="font-medium">{o.service_title}</div>
                   </td>
                   
-                  {/* 👈 Columna actualizada: Muestra el "total_cost" (Servicio + Items) */}
+                  {/* 👈 9. Columna actualizada: Muestra el "total_cost" (Servicio + Items + Externos) */}
                   <td className="px-4 py-3 align-top">
                     <div className="font-medium">${o.total_cost.toLocaleString('es-CL', { maximumFractionDigits: 0 })}</div>
                   </td>
@@ -557,9 +629,12 @@ export default function DashBoard() {
                   <td className="px-4 py-3 align-top">
                     <span
                       className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
+                        // 👈 10. AÑADIDOS: Tus otros estados
                         o.status === "Completado" ? "bg-emerald-100 text-emerald-700"
                         : o.status === "En Taller" ? "bg-amber-100 text-amber-700"
                         : o.status === "Cancelado" ? "bg-red-100 text-red-700"
+                        : o.status === "Esperando Aprobación" ? "bg-blue-100 text-blue-700"
+                        : o.status === "Esperando Repuestos" ? "bg-purple-100 text-purple-700"
                         : "bg-slate-100 text-slate-700"
                       }`}
                     >
@@ -611,8 +686,8 @@ export default function DashBoard() {
         onSubmit={saveForm}
         submitText={saving ? "Guardando..." : editing ? "Guardar cambios" : "Crear orden"}
       >
-         {errMsg && (
-          <div className="mb-3 rounded bg-red-100 text-red-700 px-3 py-2 text-sm">{errMsg}</div>
+        {errMsg && (
+         <div className="mb-3 rounded bg-red-100 text-red-700 px-3 py-2 text-sm">{errMsg}</div>
         )}
         
         {/* ... (Formulario del modal de edición no cambia) ... */}
@@ -697,7 +772,7 @@ export default function DashBoard() {
                   className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
                   {STATUS_OPTIONS.map(opt => <option key={opt}>{opt}</option>)}
                 </select>
-              </div>
+               </div>
              </div>
           </fieldset>
         </form>
