@@ -1,4 +1,5 @@
-// src/externalizacion/OfferDetail.jsx
+// ccavieres2/atgest-front/AtGest-front-5d434f7251205efcf611233a0f01d1daf0570055/src/externalizacion/OfferDetail.jsx
+
 import { useEffect, useState, useMemo, Fragment } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { apiGet, apiDelete, apiPatchMultipart } from "../lib/api"; 
@@ -16,7 +17,6 @@ import esES from "date-fns/locale/es";
 import { Dialog, Transition } from '@headlessui/react';
 // ----------------------------------------
 
-// 👈 1. Importar el nuevo modal de contratación
 import ContratarModal from "./ContratarModal";
 
 // --- Configuración del Calendario ---
@@ -69,16 +69,15 @@ export default function OfferDetail() {
     duration_minutes: "", 
     available: true,
   });
-  const [events, setEvents] = useState([]);
+  const [events, setEvents] = useState([]); // Contendrá TODOS los eventos (disponibles y reservados)
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [saving, setSaving] = useState(false);
   const [errMsg, setErrMsg] = useState("");
   const [okMsg, setOkMsg] = useState("");
-  const [isModalOpen, setIsModalOpen] = useState(false); // Modal para EDITAR horario
+  const [isModalOpen, setIsModalOpen] = useState(false); 
   const [currentEvent, setCurrentEvent] = useState(null); 
   
-  // 👈 2. Añadir estado para el nuevo modal de CONTRATACIÓN
   const [isContratarModalOpen, setIsContratarModalOpen] = useState(false);
   // --- ------- ---
 
@@ -101,15 +100,26 @@ export default function OfferDetail() {
           available: data.available,
         });
         
-        // 👈 3. CAMBIO: Usar el timestamp como ID estable
-        // Esto es crucial para que el modal 'ContratarModal' identifique el evento
-        setEvents(data.available_hours.map((event) => ({
-          id: new Date(event.start).getTime(), // Usamos timestamp como ID
+        // 1.1 Procesar horarios DISPONIBLES (los que crea el dueño)
+        const availableEvents = (data.available_hours || []).map((event) => ({
+          id: new Date(event.start).getTime(), // ID único para cliquear
           title: event.title || "Disponible", 
           start: new Date(event.start),
           end: new Date(event.end),
-        })));
-        // --- ---------------------------------------
+          type: 'available', // Añadir tipo
+        }));
+
+        // 1.2 Procesar horarios RESERVADOS (los que vienen de 'booked_slots')
+        const bookedEvents = (data.booked_slots || []).map((event) => ({
+          id: `booked-${new Date(event.start).getTime()}`, // ID único
+          title: event.title || "Reservado",
+          start: new Date(event.start),
+          end: new Date(event.end),
+          type: 'booked', // Añadir tipo
+        }));
+        
+        // 1.3 Combinar las dos listas y guardarlas en el estado 'events'
+        setEvents([...availableEvents, ...bookedEvents]);
 
         setImagePreview(data.image || null);
       })
@@ -117,7 +127,27 @@ export default function OfferDetail() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  const isOwner = currentUser && service && currentUser.username === service.owner;
+  // --- 👈 2. AÑADIR: Función para dar estilo a los eventos ---
+  const eventPropGetter = (event, start, end, isSelected) => {
+    let newStyle = {
+      backgroundColor: "#3174ad", // Color azul por defecto (disponible)
+      color: 'white',
+      borderRadius: '5px',
+      border: 'none',
+      opacity: 0.8
+    };
+
+    if (event.type === 'booked') {
+      newStyle.backgroundColor = '#dc3545'; // Color rojo (reservado)
+      newStyle.opacity = 1; // Más sólido
+      newStyle.cursor = 'not-allowed'; // Cambia el cursor
+    }
+
+    return {
+      style: newStyle,
+    };
+  };
+  // --- --------------------------------------------------- ---
 
   // --- Handlers de Formulario y Calendario ---
   const onChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
@@ -138,20 +168,37 @@ export default function OfferDetail() {
     showMore: total => `+ Ver ${total} más`,
   }), []);
 
+  // --- 👈 BLOQUE MOVIDO ---
+  // Calcular si hay horarios DISPONIBLES para el botón de contratar
+  const hasAvailableSlots = useMemo(() => {
+    return events.some(e => e.type === 'available');
+  }, [events]);
+  // --- ----------------- ---
+
+  const isOwner = currentUser && service && currentUser.username === service.owner;
+
   // Handlers del Calendario (Modo Edición)
   const handleSelectSlot = ({ start, end }) => {
-    // 👈 4. CAMBIO: Usar timestamp como ID
     setCurrentEvent({ id: Date.now(), title: "Horario disponible", start, end });
     setIsModalOpen(true);
   };
+  
   const handleSelectEvent = (event) => {
+    if (event.type === 'booked') {
+      alert("Este horario ya está reservado y no se puede editar.");
+      return;
+    }
     setCurrentEvent({ ...event, start: new Date(event.start), end: new Date(event.end) });
     setIsModalOpen(true);
   };
+  
   const handleResizeEvent = ({ event, start, end }) => {
+    if (event.type === 'booked') return;
     setEvents((prev) => prev.map((e) => e.id === event.id ? { ...e, start, end } : e));
   };
+  
   const handleDragEvent = ({ event, start, end }) => {
+    if (event.type === 'booked') return;
     setEvents((prev) => prev.map((e) => e.id === event.id ? { ...e, start, end } : e));
   };
   
@@ -186,11 +233,26 @@ export default function OfferDetail() {
       alert("La fecha de fin debe ser posterior a la fecha de inicio.");
       return;
     }
+
+    const bookedEvents = events.filter(e => e.type === 'booked');
+    const newStart = currentEvent.start;
+    const newEnd = currentEvent.end;
+
+    const isOverlapping = bookedEvents.some(bookedEvent => {
+      const bookedStart = bookedEvent.start;
+      const bookedEnd = bookedEvent.end;
+      return newStart < bookedEnd && newEnd > bookedStart;
+    });
+
+    if (isOverlapping) {
+      alert("Error: No puedes crear un horario disponible que se superponga con un horario ya reservado.");
+      return;
+    }
     
-    // 👈 5. CAMBIO: Asignar nuevo timestamp si es un evento nuevo
     const eventToSave = {
         ...currentEvent,
-        id: currentEvent.id || Date.now() 
+        id: currentEvent.id || Date.now(),
+        type: 'available' 
     };
 
     setEvents((prev) => {
@@ -233,12 +295,14 @@ export default function OfferDetail() {
       formData.append("duration_minutes", Number(form.duration_minutes));
       formData.append("available", form.available);
 
-      const availabilityData = events.map(ev => ({
-        // El 'id' (timestamp) no es necesario para el backend, solo start y end
-        title: ev.title,
-        start: ev.start.toISOString(),
-        end: ev.end.toISOString(),
-      }));
+      const availabilityData = events
+        .filter(ev => ev.type === 'available') // Solo guardar los disponibles
+        .map(ev => ({
+          title: ev.title,
+          start: ev.start.toISOString(),
+          end: ev.end.toISOString(),
+        }));
+        
       formData.append("available_hours", JSON.stringify(availabilityData));
 
       if (imageFile) {
@@ -253,13 +317,22 @@ export default function OfferDetail() {
       setImageFile(null); 
       setIsEditing(false); // Salimos del modo edición
       
-      // 👈 6. CAMBIO: Recargar eventos con los nuevos IDs
-      setEvents(updatedService.available_hours.map((event) => ({
-          id: new Date(event.start).getTime(),
-          title: event.title || "Disponible", 
-          start: new Date(event.start),
-          end: new Date(event.end),
-      })));
+      // Recargar AMBOS tipos de eventos desde la respuesta actualizada
+      const availableEvents = (updatedService.available_hours || []).map((event) => ({
+        id: new Date(event.start).getTime(),
+        title: event.title || "Disponible", 
+        start: new Date(event.start),
+        end: new Date(event.end),
+        type: 'available',
+      }));
+      const bookedEvents = (updatedService.booked_slots || []).map((event) => ({
+        id: `booked-${new Date(event.start).getTime()}`,
+        title: event.title || "Reservado",
+        start: new Date(event.start),
+        end: new Date(event.end),
+        type: 'booked',
+      }));
+      setEvents([...availableEvents, ...bookedEvents]);
 
       setTimeout(() => {
         setOkMsg("");
@@ -287,7 +360,7 @@ export default function OfferDetail() {
     setIsEditing(false);
     setErrMsg("");
     setOkMsg("");
-    // Revertir formulario y eventos a como estaban en 'service'
+    // Revertir formulario
     setForm({
       title: service.title,
       description: service.description,
@@ -296,17 +369,29 @@ export default function OfferDetail() {
       duration_minutes: service.duration_minutes || "",
       available: service.available,
     });
-    setEvents(service.available_hours.map((event) => ({
+    
+    // Recargar AMBOS tipos de eventos desde el 'service' original
+    const availableEvents = (service.available_hours || []).map((event) => ({
       id: new Date(event.start).getTime(), 
       title: event.title || "Disponible", 
       start: new Date(event.start),
       end: new Date(event.end),
-    })));
+      type: 'available',
+    }));
+    const bookedEvents = (service.booked_slots || []).map((event) => ({
+      id: `booked-${new Date(event.start).getTime()}`,
+      title: event.title || "Reservado",
+      start: new Date(event.start),
+      end: new Date(event.end),
+      type: 'booked',
+    }));
+    setEvents([...availableEvents, ...bookedEvents]);
+    
     setImageFile(null); 
     setImagePreview(service.image || null);
   }
 
-  // Lógica de Borrar
+  // Lógica de Borrar (no cambia)
   const handleDelete = async () => {
     if (!window.confirm("¿Estás seguro de que quieres eliminar esta publicación?")) {
       return;
@@ -325,8 +410,10 @@ export default function OfferDetail() {
 
 
   // --- Renderizado ---
+  // ❗️ ESTOS RETORNOS TEMPRANOS AHORA ESTÁN DESPUÉS DE TODOS LOS HOOKS ❗️
   if (loading) return <div className="text-center p-10">Cargando...</div>;
   if (!service) return <div className="text-center p-10">Servicio no encontrado.</div>;
+
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
@@ -354,14 +441,12 @@ export default function OfferDetail() {
         
         // --- MODO EDICIÓN ---
         <main className="flex-1 mx-auto max-w-5xl w-full px-4 py-6">
-           {/* Todo este bloque de formulario no cambia */}
            <form onSubmit={handleSaveSubmit} className="space-y-6 bg-white p-6 rounded-2xl shadow">
             
+            {/* ... (Todo el formulario de edición no cambia) ... */}
             <h1 className="text-2xl font-bold mb-4">✍️ Editando Servicio</h1>
-            
             {okMsg && <div className="p-3 bg-green-100 text-green-800 rounded mb-3">{okMsg}</div>}
             {errMsg && <div className="p-3 bg-red-100 text-red-800 rounded mb-3">{errMsg}</div>}
-
             {imagePreview && (
               <div 
                 className="relative w-full max-w-md mx-auto mb-4 bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center"
@@ -374,7 +459,6 @@ export default function OfferDetail() {
                 />
               </div>
             )}
-            
             <fieldset className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Título</label>
@@ -391,7 +475,6 @@ export default function OfferDetail() {
                 />
               </div>
             </fieldset>
-            
             <div>
               <label className="block text-sm font-medium mb-1">Descripción</label>
               <textarea name="description" value={form.description} onChange={onChange}
@@ -399,7 +482,6 @@ export default function OfferDetail() {
                 placeholder="Describe lo que incluye el servicio..." rows={3} required
               />
             </div>
-
             <fieldset className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Precio</label>
@@ -423,11 +505,12 @@ export default function OfferDetail() {
                 />
               </div>
             </fieldset>
-
+            
+            {/* --- CALENDARIO MODO EDICIÓN --- */}
             <fieldset>
               <legend className="block text-sm font-medium mb-2">Horarios Disponibles</legend>
               <p className="text-xs text-gray-500 mb-3">
-                Usa "Anterior" y "Siguiente". Arrastra en el calendario para crear o mover horarios. Haz clic en un horario para editarlo o borrarlo.
+                Arrastra para crear horarios. Haz clic en un horario DISPONIBLE (azul) para editarlo o borrarlo. Los horarios RESERVADOS (rojo) no se pueden modificar.
               </p>
               <div className="p-2 border rounded-lg" style={{ height: "600px" }}>
                 <Calendar
@@ -444,15 +527,17 @@ export default function OfferDetail() {
                   onSelectEvent={handleSelectEvent}
                   resizable={true} 
                   onEventResize={handleResizeEvent} 
-                  draggableAccessor={() => true}
+                  draggableAccessor={(event) => event.type !== 'booked'} // 👈 No permitir arrastrar si está 'booked'
                   onEventDrop={handleDragEvent} 
                   min={set(new Date(0), { hours: 0, minutes: 0 })}
                   max={set(new Date(0), { hours: 23, minutes: 59 })}
                   components={{ toolbar: CustomToolbar }}
+                  eventPropGetter={eventPropGetter} // 👈 AÑADIDO
                 />
               </div>
             </fieldset>
 
+            {/* ... (Botones de formulario no cambian) ... */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <input
@@ -464,7 +549,6 @@ export default function OfferDetail() {
                 />
                 <label htmlFor="available-check" className="text-sm text-gray-700">Disponible para contratación</label>
               </div>
-
               <div className="flex items-center gap-4">
                 <button
                   type="button"
@@ -493,6 +577,7 @@ export default function OfferDetail() {
           
           {okMsg && <div className="p-3 bg-green-100 text-green-800 rounded mb-4">{okMsg}</div>}
 
+          {/* ... (Imagen, título, descripción y detalles no cambian) ... */}
           {service.image && (
             <div 
               className="relative w-full max-w-3xl mx-auto mb-6 bg-gray-100 rounded-lg overflow-hidden flex items-center justify-center"
@@ -505,10 +590,8 @@ export default function OfferDetail() {
               />
             </div>
           )}
-
           <h1 className="text-3xl font-bold mb-2">{service.title}</h1>
           <p className="text-gray-700 mb-4">{service.description}</p>
-
           <div className="space-y-4">
             <div className="text-sm grid grid-cols-2 gap-x-4 gap-y-2 max-w-md">
               <p><strong>Precio:</strong> ${Number(service.price).toLocaleString('es-CL')}</p>
@@ -518,8 +601,9 @@ export default function OfferDetail() {
               <p><strong>Disponible:</strong> {service.available ? "Sí" : "No"}</p>
             </div>
 
+            {/* --- CALENDARIO MODO VISTA --- */}
             <div>
-              <h2 className="text-lg font-semibold mt-4 mb-2">Horarios Disponibles</h2>
+              <h2 className="text-lg font-semibold mt-4 mb-2">Horarios Disponibles y Reservados</h2>
               <div className="p-2 border rounded-lg bg-white" style={{ height: "600px" }}>
                 <Calendar
                   localizer={localizer}
@@ -533,14 +617,20 @@ export default function OfferDetail() {
                   selectable={false}
                   resizable={false}
                   draggableAccessor={() => false}
-                  onSelectEvent={event => alert(
-                    `Horario: ${event.title}\nDe: ${format(event.start, 'p', { locale: esES })}\nA: ${format(event.end, 'p', { locale: esES })}`
-                  )}
+                  onSelectEvent={event => { // 👈 MODIFICADO
+                    const timeRange = `De: ${format(event.start, 'p', { locale: esES })} a ${format(event.end, 'p', { locale: esES })}`;
+                    if (event.type === 'booked') {
+                      alert(`Horario Reservado\n${timeRange}`);
+                    } else {
+                      alert(`Horario Disponible: ${event.title}\n${timeRange}`);
+                    }
+                  }}
                   min={set(new Date(0), { hours: 0, minutes: 0 })}
                   max={set(new Date(0), { hours: 23, minutes: 59 })}
                   components={{ 
-                    toolbar: CustomToolbar // Usamos el toolbar con navegación
+                    toolbar: CustomToolbar
                   }}
+                  eventPropGetter={eventPropGetter} // 👈 AÑADIDO
                 />
               </div>
             </div>
@@ -570,13 +660,12 @@ export default function OfferDetail() {
                 </button>
               </>
             ) : (
-              // 👈 7. CAMBIO EN EL BOTÓN "CONTRATAR"
               <button
                 className="mt-6 bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700 disabled:opacity-50"
-                onClick={() => setIsContratarModalOpen(true)} // Abre el nuevo modal
-                disabled={!service.available || events.length === 0} // Deshabilitar si no está disponible o no hay horarios
+                onClick={() => setIsContratarModalOpen(true)}
+                disabled={!service.available || !hasAvailableSlots} // 👈 MODIFICADO
               >
-                {service.available && events.length > 0 ? "Contratar este servicio" : "Servicio no disponible"}
+                {service.available && hasAvailableSlots ? "Contratar este servicio" : "Servicio no disponible"}
               </button>
             )}
           </div>
@@ -617,7 +706,7 @@ export default function OfferDetail() {
                     as="h3"
                     className="text-lg font-medium leading-6 text-gray-900 mb-4"
                   >
-                    {events.find(e => e.id === currentEvent?.id) ? 'Editar Horario' : 'Añadir Horario'}
+                    {currentEvent?.type ? 'Editar Horario' : 'Añadir Horario'}
                   </Dialog.Title>
                   <div className="mt-2 space-y-4">
                     <div>
@@ -659,7 +748,7 @@ export default function OfferDetail() {
                     </div>
                   </div>
                   <div className="mt-6 flex justify-between items-center">
-                    {events.find(e => e.id === currentEvent?.id) ? (
+                    {currentEvent?.type ? (
                       <button
                         type="button"
                         className="inline-flex justify-center rounded-md border border-transparent bg-red-100 px-4 py-2 text-sm font-medium text-red-900 hover:bg-red-200 focus:outline-none"
@@ -694,14 +783,13 @@ export default function OfferDetail() {
         </Dialog>
       </Transition>
 
-      {/* 👈 8. RENDERIZAR EL NUEVO MODAL DE CONTRATACIÓN */}
-      {/* Nos aseguramos de no dar error si el servicio aún no ha cargado */}
+      {/* --- MODAL DE CONTRATACIÓN --- */}
       {service && (
         <ContratarModal 
           isOpen={isContratarModalOpen}
           onClose={() => setIsContratarModalOpen(false)}
           service={service}
-          events={events} // Le pasamos los eventos (horarios)
+          events={events.filter(e => e.type === 'available')} // 👈 Pasar SOLO los disponibles
         />
       )}
 
