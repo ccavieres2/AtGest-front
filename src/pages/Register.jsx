@@ -223,13 +223,6 @@ export default function Register() {
               >
                 Ya tengo cuenta (Ingresar)
               </Link>
-              <button
-                type="button"
-                onClick={fakeNav("Aquí iría 'Recuperar contraseña' (placeholder).")}
-                className="w-full border border-gray-300 text-gray-700 rounded-lg py-2 font-medium hover:bg-gray-100"
-              >
-                Recuperar contraseña
-              </button>
             </div>
           </form>
         </div>
