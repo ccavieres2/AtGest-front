@@ -9,4 +9,9 @@ export const PATHS = {
   externalnew: "/externalnew",
   externalid: "/external/:id",
   team: "/team",
+  clients: "/clients",
+  clientDetail: "/clients/:id",
+  evaluations: "/evaluations",
+  evaluationNew: "/evaluations/new", 
+  evaluationDetail: "/evaluations/:id", 
 };

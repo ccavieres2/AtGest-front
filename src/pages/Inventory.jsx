@@ -1,55 +1,60 @@
 // src/pages/Inventory.jsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, Fragment } from "react";
 import { useNavigate } from "react-router-dom";
+import { Dialog, Transition } from "@headlessui/react";
 import { apiGet, apiPost, apiPut, apiDelete } from "../lib/api";
 import AppNavbar from "../components/layout/AppNavbar";
 import AppDrawer from "../components/layout/AppDrawer";
 import AppFooter from "../components/layout/AppFooter";
 
-// (IconButton, PrimaryButton y Modal no cambian, se asumen aquí)
-// ... (copia tus componentes IconButton, PrimaryButton, y Modal aquí) ...
-function IconButton({ title, onClick, children, className = "" }) {
+// --- Componentes Auxiliares ---
+function IconButton({ onClick, className = "", children, title, disabled }) {
   return (
     <button
       type="button"
-      title={title}
       onClick={onClick}
-      className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm hover:bg-slate-50 ${className}`}
+      title={title}
+      disabled={disabled}
+      className={`p-2 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
     >
       {children}
     </button>
   );
 }
-function PrimaryButton({ title, onClick, children }) {
+
+function PrimaryButton({ title, onClick, children, disabled }) {
   return (
     <button
       type="button"
       title={title}
       onClick={onClick}
-      className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 text-white px-4 py-2 text-sm font-semibold hover:bg-indigo-700"
+      disabled={disabled}
+      className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 shadow-sm transition-all disabled:opacity-50"
     >
       {children}
     </button>
   );
 }
+
+// Modal Genérico para Formularios
 function Modal({ open, title, onClose, onSubmit, children, submitText = "Guardar" }) {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
-          <button onClick={onClose} className="rounded p-1 hover:bg-slate-100" title="Cerrar">
+      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl transition-all">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-bold text-slate-900">{title}</h3>
+          <button onClick={onClose} className="rounded p-1 hover:bg-slate-100 text-slate-500">
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M6 6l12 12M18 6L6 18" />
+              <path d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
-        <div className="mt-4">{children}</div>
-        <div className="mt-6 flex justify-end gap-2">
-          <button onClick={onClose} className="rounded-lg border px-4 py-2 text-sm hover:bg-slate-50">Cancelar</button>
-          <button onClick={onSubmit} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700">
+        <div className="mt-2">{children}</div>
+        <div className="mt-6 flex justify-end gap-3">
+          <button onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Cancelar</button>
+          <button onClick={onSubmit} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 shadow-sm">
             {submitText}
           </button>
         </div>
@@ -58,7 +63,7 @@ function Modal({ open, title, onClose, onSubmit, children, submitText = "Guardar
   );
 }
 
-// --- ⭐️ NUEVO: Modal para Asignar Item ⭐️ ---
+// Modal Específico: Asignar Item
 function AssignItemModal({ item, onClose, onAssigned }) {
   const [orders, setOrders] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
@@ -67,21 +72,15 @@ function AssignItemModal({ item, onClose, onAssigned }) {
   const [errMsg, setErrMsg] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // 1. Cargar órdenes activas al abrir el modal
   useEffect(() => {
     async function loadActiveOrders() {
       setLoadingOrders(true);
       try {
         const allOrders = await apiGet("/orders/");
-        // Filtramos solo las órdenes que no están "Completado" o "Cancelado"
         const active = allOrders.filter(o => o.status !== 'done' && o.status !== 'cancelled');
         setOrders(active);
-        // Seleccionar la primera orden por defecto si existe
-        if (active.length > 0) {
-          setSelectedOrder(active[0].id);
-        }
+        if (active.length > 0) setSelectedOrder(active[0].id);
       } catch (e) {
-        console.error(e);
         setErrMsg("No se pudieron cargar las órdenes.");
       } finally {
         setLoadingOrders(false);
@@ -90,40 +89,21 @@ function AssignItemModal({ item, onClose, onAssigned }) {
     loadActiveOrders();
   }, []);
 
-  // 2. Handler para asignar
   async function handleAssign() {
-    if (!selectedOrder) {
-      setErrMsg("Debes seleccionar una orden.");
-      return;
-    }
-    if (quantity <= 0) {
-      setErrMsg("La cantidad debe ser mayor a 0.");
-      return;
-    }
-    if (quantity > item.quantity) {
-      setErrMsg(`Stock insuficiente. Disponible: ${item.quantity}`);
-      return;
-    }
+    if (!selectedOrder) return setErrMsg("Debes seleccionar una orden.");
+    if (quantity <= 0) return setErrMsg("La cantidad debe ser mayor a 0.");
+    if (quantity > item.quantity) return setErrMsg(`Stock insuficiente. Disponible: ${item.quantity}`);
 
     setSaving(true);
     setErrMsg("");
-    
     try {
-      // 3. Llamar al nuevo endpoint
-      await apiPost(`/orders/${selectedOrder}/add-item/`, {
-        item_id: item.id,
-        quantity: quantity,
-      });
-      onAssigned(); // Llama a la función del padre para recargar inventario y cerrar
+      await apiPost(`/orders/${selectedOrder}/add-item/`, { item_id: item.id, quantity });
+      onAssigned();
     } catch (e) {
-      console.error(e);
-      // Intentar leer el error del backend
       try {
         const parsed = JSON.parse(e.message);
-        setErrMsg(parsed.error || "Error al asignar el producto.");
-      } catch {
-        setErrMsg("Error al asignar el producto.");
-      }
+        setErrMsg(parsed.error || "Error al asignar.");
+      } catch { setErrMsg("Error al asignar."); }
     } finally {
       setSaving(false);
     }
@@ -133,69 +113,34 @@ function AssignItemModal({ item, onClose, onAssigned }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={onClose} />
       <div className="relative z-10 w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-slate-900">Asignar Producto</h3>
-          <button onClick={onClose} className="rounded p-1 hover:bg-slate-100" title="Cerrar">
-            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M6 6l12 12M18 6L6 18" />
-            </svg>
-          </button>
-        </div>
+        <h3 className="text-lg font-bold text-slate-900 mb-4">Asignar Producto</h3>
+        {errMsg && <div className="mb-4 rounded bg-red-100 text-red-700 px-3 py-2 text-sm">{errMsg}</div>}
         
-        {errMsg && <div className="mt-4 rounded bg-red-100 text-red-700 px-3 py-2 text-sm">{errMsg}</div>}
-
-        <div className="mt-4 space-y-4">
+        <div className="space-y-4">
           <div>
-            <label className="block text-sm text-slate-700 mb-1">Producto</label>
-            <input 
-              value={`${item.name} (Stock: ${item.quantity})`}
-              disabled 
-              className="w-full rounded-lg border bg-slate-50 px-3 py-2 text-sm"
-            />
+            <label className="block text-xs font-medium text-slate-700 mb-1">Producto</label>
+            <input value={`${item.name} (Stock: ${item.quantity})`} disabled className="w-full rounded-lg border bg-slate-50 px-3 py-2 text-sm text-slate-500"/>
           </div>
-          
           <div>
-            <label className="block text-sm text-slate-700 mb-1">Asignar a Orden</label>
-            {loadingOrders ? (
-              <div className="text-sm text-slate-500">Cargando órdenes...</div>
-            ) : (
-              <select 
-                value={selectedOrder} 
-                onChange={(e) => setSelectedOrder(e.target.value)}
-                className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
-              >
+            <label className="block text-xs font-medium text-slate-700 mb-1">Orden</label>
+            {loadingOrders ? <div className="text-sm text-slate-500">Cargando...</div> : (
+              <select value={selectedOrder} onChange={(e) => setSelectedOrder(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
                 {orders.length === 0 && <option value="">No hay órdenes activas</option>}
-                {orders.map(o => (
-                  <option key={o.id} value={o.id}>
-                    #{o.id} - {o.client_name} ({o.vehicle_model})
-                  </option>
-                ))}
+                {orders.map(o => <option key={o.id} value={o.id}>#{o.id} - {o.client_name} ({o.vehicle_model})</option>)}
               </select>
             )}
           </div>
-
           <div>
-            <label className="block text-sm text-slate-700 mb-1">Cantidad a Asignar</label>
-            <input 
-              type="number" 
-              min="1"
-              max={item.quantity} // No permitir asignar más del stock
-              value={quantity} 
-              onChange={(e) => setQuantity(Number(e.target.value))}
-              className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" 
-            />
+            <label className="block text-xs font-medium text-slate-700 mb-1">Cantidad</label>
+            <input type="number" min="1" max={item.quantity} value={quantity} onChange={(e) => setQuantity(Number(e.target.value))} className="w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
           </div>
-
         </div>
-        <div className="mt-6 flex justify-end gap-2">
-          <button onClick={onClose} className="rounded-lg border px-4 py-2 text-sm hover:bg-slate-50">Cancelar</button>
-          <button 
-            onClick={handleAssign}
-            disabled={saving || loadingOrders || orders.length === 0}
-            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
-          >
+
+        <div className="mt-6 flex justify-end gap-3">
+          <button onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Cancelar</button>
+          <button onClick={handleAssign} disabled={saving || loadingOrders || orders.length === 0} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 shadow-sm">
             {saving ? "Asignando..." : "Asignar"}
           </button>
         </div>
@@ -203,8 +148,6 @@ function AssignItemModal({ item, onClose, onAssigned }) {
     </div>
   );
 }
-// --- ⭐️ FIN Modal Asignar ⭐️ ---
-
 
 const STATUS = { active: "Activo", inactive: "Inactivo", out: "Sin stock" };
 const STATUS_FROM_LABEL = { Activo: "active", Inactivo: "inactive", "Sin stock": "out" };
@@ -217,19 +160,21 @@ export default function Inventory() {
   const [loadingList, setLoadingList] = useState(false);
   const [q, setQ] = useState("");
 
+  // Estados Modal Formulario
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState({
-    name: "", sku: "", quantity: 0, price: 0, category: "", location: "", status: "Activo",
-  });
+  const [form, setForm] = useState({ name: "", sku: "", quantity: 0, price: 0, category: "", location: "", status: "Activo" });
   const [saving, setSaving] = useState(false);
   const [errMsg, setErrMsg] = useState("");
   
-  // --- ⭐️ NUEVO: Estados para el modal de Asignar ⭐️ ---
+  // Estados Modal Asignar
   const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [assigningItem, setAssigningItem] = useState(null);
-  // --- ------------------------------------------- ---
 
+  // Estados Modal Eliminación
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   async function loadInventory() {
     setLoadingList(true);
@@ -247,7 +192,6 @@ export default function Inventory() {
       }));
       setItems(norm);
     } catch (e) {
-      console.error(e);
       alert("No se pudo cargar el inventario.");
     } finally {
       setLoadingList(false);
@@ -262,12 +206,11 @@ export default function Inventory() {
       i.name.toLowerCase().includes(s) ||
       i.sku.toLowerCase().includes(s) ||
       i.category.toLowerCase().includes(s) ||
-      i.location.toLowerCase().includes(s) ||
-      String(i.quantity).includes(s)
+      i.location.toLowerCase().includes(s)
     );
   }, [q, items]);
 
-  // --- Funciones para modal Editar/Crear ---
+  // Funciones Modal Formulario
   function openAdd() {
     setErrMsg("");
     setForm({ name: "", sku: "", quantity: 0, price: 0, category: "", location: "", status: "Activo" });
@@ -283,35 +226,25 @@ export default function Inventory() {
     setModalOpen(true);
   }
 
-  // --- ⭐️ NUEVO: Funciones para modal Asignar ⭐️ ---
+  // Funciones Modal Asignar
   function openAssign(id) {
     const it = items.find((x) => x.id === id);
     if (!it) return;
-    if (it.quantity <= 0) {
-      alert("No hay stock de este producto para asignar.");
-      return;
-    }
+    if (it.quantity <= 0) return alert("No hay stock para asignar.");
     setAssigningItem(it);
     setAssignModalOpen(true);
   }
-  
   function handleOnAssigned() {
     setAssignModalOpen(false);
     setAssigningItem(null);
-    loadInventory(); // Recargar inventario para ver el nuevo stock
+    loadInventory();
   }
-  // --- ------------------------------------ ---
 
-
+  // Lógica Guardar
   async function saveForm() {
-    // ... (lógica de saveForm no cambia)
-    if (!form.name.trim() || !form.sku.trim()) {
-      setErrMsg("Nombre y SKU son obligatorios.");
-      return;
-    }
+    if (!form.name.trim() || !form.sku.trim()) return setErrMsg("Nombre y SKU son obligatorios.");
     if (form.quantity < 0) return setErrMsg("Cantidad no puede ser negativa.");
-    if (form.price < 0) return setErrMsg("Precio no puede ser negativo.");
-
+    
     setSaving(true);
     try {
       const payload = {
@@ -331,131 +264,140 @@ export default function Inventory() {
       setModalOpen(false);
       await loadInventory();
     } catch (e) {
-      console.error(e);
-      setErrMsg("No se pudo guardar el producto.");
+      setErrMsg("Error al guardar.");
     } finally {
       setSaving(false);
     }
   }
 
-  async function remove(id) {
-    // ... (lógica de remove no cambia)
-    if (!confirm("¿Eliminar este producto?")) return;
-    try {
-      await apiDelete(`/inventory/${id}/`);
-      setItems((arr) => arr.filter((i) => i.id !== id));
-    } catch (e) {
-      console.error(e);
-      alert("No se pudo eliminar el producto.");
-    }
-  }
+  // Funciones Eliminación
+  const openDeleteModal = (item) => {
+    setItemToDelete(item);
+    setIsDeleteModalOpen(true);
+  };
 
-  const drawerItems = [
-    { label: "Órdenes", onClick: () => navigate("/dashboard") },
-    { label: "Inventario", onClick: () => navigate("/inventory") },
-    { label: "Externalización", onClick: () => navigate("/external") },
-  ];
+  const confirmDelete = async () => {
+    if (!itemToDelete) return;
+    setIsDeleting(true);
+    try {
+      await apiDelete(`/inventory/${itemToDelete.id}/`);
+      setItems((arr) => arr.filter((i) => i.id !== itemToDelete.id));
+      setIsDeleteModalOpen(false);
+      setItemToDelete(null);
+    } catch (e) {
+      alert("Error al eliminar el producto.");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
-      <AppNavbar
-        title="Inventario"
-        onOpenDrawer={() => setDrawerOpen(true)}
-        onLogout={() => { localStorage.clear(); location.href = "/login"; }}
-        onAlerts={() => alert("Aquí irían tus alertas 😉")}
+      <AppNavbar 
+        title="Inventario" 
+        onOpenDrawer={() => setDrawerOpen(true)} 
+        onLogout={() => { localStorage.clear(); location.href = "/login"; }} 
       />
+      <AppDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
 
-      <AppDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} items={drawerItems} />
-
-      <main className="flex-1 mx-auto max-w-7xl w-full px-4 py-6">
-        {/* ... (Header no cambia) ... */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h1 className="text-2xl font-bold tracking-tight">Productos</h1>
-          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center">
+      <main className="flex-1 mx-auto max-w-7xl w-full px-4 py-8">
+        
+        {/* Header */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900">Productos</h1>
+            <p className="text-sm text-slate-500">Gestiona el stock de repuestos e insumos.</p>
+          </div>
+          
+          <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative">
               <input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="Buscar por nombre, SKU, categoría, ubicación…"
-                className="w-full sm:w-96 rounded-lg border border-slate-300 px-3 py-2 pl-9 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                placeholder="Buscar..."
+                className="w-full sm:w-72 rounded-lg border border-slate-300 px-3 py-2 pl-9 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
-              <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-slate-400">
-                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="11" cy="11" r="7" />
-                  <path d="M21 21l-4.3-4.3" />
-                </svg>
-              </span>
-            </div>
-            <PrimaryButton title="Agregar producto" onClick={openAdd}>
-              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 5v14M5 12h14" />
+              <svg className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
-              <span>Agregar</span>
+            </div>
+            
+            <PrimaryButton title="Agregar producto" onClick={openAdd}>
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+              </svg>
+              <span>Nuevo Producto</span>
             </PrimaryButton>
           </div>
         </div>
 
+        {/* Tabla */}
         <div className="mt-4 overflow-hidden rounded-2xl border bg-white shadow-sm">
-          {/* ... (Cabecera de la tabla no cambia) ... */}
-          <div className="hidden md:grid grid-cols-12 gap-4 border-b bg-slate-50 px-4 py-3 text-xs font-semibold text-slate-500">
+          <div className="hidden md:grid grid-cols-12 gap-4 border-b bg-slate-50 px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
             <div className="col-span-3">Nombre</div>
             <div className="col-span-2">SKU</div>
             <div className="col-span-2">Cantidad</div>
             <div className="col-span-2">Precio</div>
             <div className="col-span-2">Estado</div>
-            <div className="col-span-1 text-right pr-1">Acciones</div>
+            <div className="col-span-1 text-right">Acciones</div>
           </div>
 
-          {loadingList && <div className="px-4 py-8 text-center text-sm text-slate-500">Cargando…</div>}
+          {loadingList && <div className="px-6 py-8 text-center text-sm text-slate-500">Cargando inventario...</div>}
 
-          <ul className="divide-y">
+          <ul className="divide-y divide-slate-100">
             {filtered.map((p) => (
-              <li key={p.id} className="grid grid-cols-1 md:grid-cols-12 gap-2 px-4 py-4">
-                {/* ... (Datos de la fila no cambian) ... */}
+              <li key={p.id} className="grid grid-cols-1 md:grid-cols-12 gap-2 px-6 py-4 hover:bg-slate-50 transition-colors group">
                 <div className="md:col-span-3">
-                  <div className="font-medium">{p.name}</div>
-                  <div className="text-xs text-slate-500">Cat: {p.category || "—"} · Ubicación: {p.location || "—"}</div>
+                  <div className="font-medium text-slate-900">{p.name}</div>
+                  <div className="text-xs text-slate-500">
+                    {p.category && <span className="mr-2">Cat: {p.category}</span>}
+                    {p.location && <span>Ubic: {p.location}</span>}
+                  </div>
                 </div>
-                <div className="md:col-span-2 text-slate-700">{p.sku}</div>
-                <div className="md:col-span-2 text-slate-700">{p.quantity}</div>
-                <div className="md:col-span-2 text-slate-700">${p.price.toLocaleString('es-CL', { maximumFractionDigits: 0 })}</div>
-                <div className="md:col-span-2">
-                  <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${
+                <div className="md:col-span-2 text-slate-600 font-mono text-xs flex items-center">{p.sku}</div>
+                <div className="md:col-span-2 text-slate-700 flex items-center">
+                  <span className={`font-medium ${p.quantity === 0 ? 'text-red-600' : ''}`}>{p.quantity}</span>
+                </div>
+                <div className="md:col-span-2 text-slate-700 flex items-center">${p.price.toLocaleString('es-CL', { maximumFractionDigits: 0 })}</div>
+                <div className="md:col-span-2 flex items-center">
+                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
                     p.status === "Activo" ? "bg-emerald-100 text-emerald-700"
                     : p.status === "Sin stock" ? "bg-rose-100 text-rose-700"
-                    : "bg-slate-100 text-slate-700"
+                    : "bg-slate-100 text-slate-600"
                   }`}>
                     {p.status}
                   </span>
                 </div>
                 
-                {/* --- ⭐️ NUEVO: Grupo de botones de acción ⭐️ --- */}
-                <div className="md:col-span-1 flex items-center justify-end gap-2">
-                  <IconButton title="Asignar a Orden" onClick={() => openAssign(p.id)} className="px-2 py-1" disabled={p.quantity <= 0}>
+                {/* Botones de acción SIEMPRE visibles */}
+                <div className="md:col-span-1 flex items-center justify-end gap-1">
+                  {/* Asignar */}
+                  <IconButton title="Asignar a Orden" onClick={() => openAssign(p.id)} disabled={p.quantity <= 0}>
                     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M12 5v14M5 12h14" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                     </svg>
                   </IconButton>
-                  <IconButton title="Editar" onClick={() => openEdit(p.id)} className="px-2 py-1">
+                  
+                  {/* Editar (Icono Lápiz) */}
+                  <IconButton title="Editar" onClick={() => openEdit(p.id)}>
                     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M12 20h9" />
-                      <path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z" />
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                     </svg>
                   </IconButton>
-                  <IconButton title="Eliminar" onClick={() => remove(p.id)} className="px-2 py-1">
+                  
+                  {/* Eliminar (Icono Basura) */}
+                  <IconButton title="Eliminar" onClick={() => openDeleteModal(p)} className="text-red-400 hover:bg-red-50 hover:text-red-600">
                     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M3 6h18" />
-                      <path d="M8 6v14a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V6" />
-                      <path d="M10 11v6M14 11v6" />
+                      <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
                   </IconButton>
                 </div>
-                {/* --- -------------------------------------- --- */}
 
               </li>
             ))}
             {!loadingList && filtered.length === 0 && (
-              <li className="px-4 py-8 text-center text-sm text-slate-500">No hay resultados para “{q}”.</li>
+              <li className="px-6 py-8 text-center text-sm text-slate-500">No se encontraron productos.</li>
             )}
           </ul>
         </div>
@@ -463,75 +405,113 @@ export default function Inventory() {
 
       <AppFooter />
 
-      {/* Modal crear/editar */}
+      {/* Modal Crear/Editar */}
       <Modal
         open={modalOpen}
-        title={editing ? "Editar producto" : "Agregar producto"}
+        title={editing ? "Editar Producto" : "Nuevo Producto"}
         onClose={() => setModalOpen(false)}
         onSubmit={saveForm}
-        submitText={saving ? "Guardando..." : editing ? "Guardar cambios" : "Crear producto"}
+        submitText={saving ? "Guardando..." : "Guardar"}
       >
-        {/* ... (Contenido del modal de edición no cambia) ... */}
         {errMsg && <div className="mb-3 rounded bg-red-100 text-red-700 px-3 py-2 text-sm">{errMsg}</div>}
-        <div className="grid gap-4">
+        <div className="space-y-4">
           <div>
-            <label className="block text-sm text-slate-700 mb-1">Nombre</label>
-            <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                   className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+            <label className="block text-xs font-medium text-slate-700 mb-1">Nombre</label>
+            <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500" />
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm text-slate-700 mb-1">SKU</label>
-              <input value={form.sku} onChange={(e) => setForm((f) => ({ ...f, sku: e.target.value }))}
-                     className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+              <label className="block text-xs font-medium text-slate-700 mb-1">SKU</label>
+              <input value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500" />
             </div>
             <div>
-              <label className="block text-sm text-slate-700 mb-1">Cantidad</label>
-              <input type="number" min="0" value={form.quantity}
-                onChange={(e) => setForm((f) => ({ ...f, quantity: Number(e.target.value) }))}
-                className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+              <label className="block text-xs font-medium text-slate-700 mb-1">Cantidad</label>
+              <input type="number" min="0" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: Number(e.target.value) })} className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500" />
             </div>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm text-slate-700 mb-1">Precio</label>
-              <input type="number" min="0" step="0.01" value={form.price}
-                onChange={(e) => setForm((f) => ({ ...f, price: Number(e.target.value) }))}
-                className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+              <label className="block text-xs font-medium text-slate-700 mb-1">Precio</label>
+              <input type="number" min="0" value={form.price} onChange={(e) => setForm({ ...form, price: Number(e.target.value) })} className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500" />
             </div>
             <div>
-              <label className="block text-sm text-slate-700 mb-1">Estado</label>
-              <select value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value })) }
-                className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+              <label className="block text-xs font-medium text-slate-700 mb-1">Estado</label>
+              <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value }) } className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
                 <option>Activo</option>
                 <option>Inactivo</option>
                 <option>Sin stock</option>
               </select>
             </div>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm text-slate-700 mb-1">Categoría</label>
-              <input value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
-                     className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+              <label className="block text-xs font-medium text-slate-700 mb-1">Categoría</label>
+              <input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500" />
             </div>
             <div>
-              <label className="block text-sm text-slate-700 mb-1">Ubicación</label>
-              <input value={form.location} onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
-                     className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+              <label className="block text-xs font-medium text-slate-700 mb-1">Ubicación</label>
+              <input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500" />
             </div>
           </div>
         </div>
       </Modal>
       
-      {/* --- ⭐️ NUEVO: Renderizar modal de Asignar ⭐️ --- */}
-      {assignModalOpen && (
-        <AssignItemModal
-          item={assigningItem}
-          onClose={() => setAssignModalOpen(false)}
-          onAssigned={handleOnAssigned}
-        />
-      )}
+      {/* Modal Asignar */}
+      {assignModalOpen && <AssignItemModal item={assigningItem} onClose={() => setAssignModalOpen(false)} onAssigned={handleOnAssigned} />}
+
+      {/* Modal Confirmar Eliminación */}
+      <Transition appear show={isDeleteModalOpen} as={Fragment}>
+        <Dialog as="div" className="relative z-50" onClose={() => !isDeleting && setIsDeleteModalOpen(false)}>
+          <div className="fixed inset-0 bg-black/30 backdrop-blur-sm" aria-hidden="true" />
+          <div className="fixed inset-0 overflow-y-auto">
+            <div className="flex min-h-full items-center justify-center p-4 text-center">
+              <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-white p-6 text-left align-middle shadow-xl transition-all">
+                
+                <div className="text-center">
+                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-100 mb-4">
+                    <svg className="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                    </svg>
+                  </div>
+                  
+                  <Dialog.Title as="h3" className="text-lg font-bold leading-6 text-slate-900">
+                    ¿Eliminar Producto?
+                  </Dialog.Title>
+                  
+                  <div className="mt-2">
+                    <p className="text-sm text-slate-500">
+                      Estás a punto de eliminar <strong>{itemToDelete?.name}</strong>.
+                      <br/>
+                      Esta acción eliminará el producto del inventario permanentemente.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-6 grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    className="inline-flex w-full justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-base font-medium text-slate-700 shadow-sm hover:bg-slate-50 focus:outline-none sm:text-sm transition-colors"
+                    onClick={() => setIsDeleteModalOpen(false)}
+                    disabled={isDeleting}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    className="inline-flex w-full justify-center rounded-lg border border-transparent bg-red-600 px-4 py-2 text-base font-medium text-white shadow-sm hover:bg-red-700 focus:outline-none sm:text-sm transition-colors disabled:opacity-70"
+                    onClick={confirmDelete}
+                    disabled={isDeleting}
+                  >
+                    {isDeleting ? "Eliminando..." : "Eliminar"}
+                  </button>
+                </div>
+
+              </Dialog.Panel>
+            </div>
+          </div>
+        </Dialog>
+      </Transition>
+
     </div>
   );
 }

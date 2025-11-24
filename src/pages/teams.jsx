@@ -171,7 +171,7 @@ export default function Team() {
     { label: "Órdenes", onClick: () => navigate("/dashboard") },
     { label: "Inventario", onClick: () => navigate("/inventory") },
     { label: "Externalización", onClick: () => navigate("/external") },
-    { label: "Mi Equipo", onClick: () => navigate("/team") },
+    { label: "Mi Personal", onClick: () => navigate("/team") },
   ];
 
   return (
@@ -319,6 +319,7 @@ export default function Team() {
                           onChange={e => setForm({...form, phone: e.target.value})} 
                           className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500" 
                           placeholder="+569..." 
+                          required
                         />
                       </div>
                     </div>
