@@ -13,6 +13,7 @@ const Inventory = lazy(() => import("../pages/Inventory"))
 const ExternalMarket = lazy(() => import("../externalizacion/ExternalMarket"))
 const OfferForm = lazy(() => import("../externalizacion/OfferForm"));
 const OfferDetail = lazy(() => import("../externalizacion/OfferDetail"));
+const Team = lazy(() => import("../pages/teams"));
 
 export default function AppRoutes() {
   return (
@@ -28,6 +29,7 @@ export default function AppRoutes() {
           <Route path={PATHS.external} element={<ExternalMarket />} />
           <Route path={PATHS.externalnew} element={<OfferForm />} />
           <Route path={PATHS.externalid} element={<OfferDetail />} />
+          <Route path={PATHS.team} element={<Team />} />
         </Routes>
       </Suspense>
     </BrowserRouter>

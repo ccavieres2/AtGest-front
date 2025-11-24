@@ -8,4 +8,5 @@ export const PATHS = {
   external: "/external",
   externalnew: "/externalnew",
   externalid: "/external/:id",
+  team: "/team",
 };

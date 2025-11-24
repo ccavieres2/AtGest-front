@@ -35,13 +35,16 @@ export default function Login() {
       const resp = await apiPost("/auth/login/", form);
       localStorage.setItem("access", resp.access);
       localStorage.setItem("refresh", resp.refresh);
+      
+      // 👇 IMPORTANTE: Guardamos el rol para usarlo en los menús
+      localStorage.setItem("role", resp.role); 
 
       // Verificamos el usuario autenticado
       const me = await apiGet("/auth/me/");
       setOkMsg(`¡Bienvenido, ${me.username}!`);
 
       setTimeout(() => {
-        navigate(PATHS.dashboard); // Redirige al Dashboard.jsx
+        navigate(PATHS.dashboard); // Redirige al Dashboard
       }, 800);
     } catch (err) {
       console.error("Error en login:", err.message);
