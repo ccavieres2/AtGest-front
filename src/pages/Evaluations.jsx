@@ -1,291 +1,262 @@
-// src/pages/EvaluationForm.jsx
-import { useState, useEffect } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import { apiGet, apiPost, apiPut } from "../lib/api"; // 👈 Importamos apiPut
+// src/pages/Evaluations.jsx
+import { useState, useEffect, Fragment } from "react";
+import { useNavigate } from "react-router-dom";
+import { Dialog, Transition } from "@headlessui/react";
+import { apiGet, apiDelete } from "../lib/api";
+import { PATHS } from "../routes/path";
 import AppNavbar from "../components/layout/AppNavbar";
 import AppDrawer from "../components/layout/AppDrawer";
 import AppFooter from "../components/layout/AppFooter";
 
+// --- Componentes de Botones ---
+function IconButton({ onClick, children, title, className = "" }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      className={`p-2 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition-colors ${className}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function PrimaryButton({ title, onClick, children }) {
+  return (
+    <button
+      type="button"
+      title={title}
+      onClick={onClick}
+      className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 shadow-sm transition-all"
+    >
+      {children}
+    </button>
+  );
+}
+
 export default function Evaluations() {
   const navigate = useNavigate();
-  const { id } = useParams(); // 👈 Capturamos el ID si estamos editando
   const [drawerOpen, setDrawerOpen] = useState(false);
   
-  // Datos maestros
-  const [clients, setClients] = useState([]);
-  const [vehicles, setVehicles] = useState([]); 
-  
-  // Formulario
-  const [selectedClient, setSelectedClient] = useState("");
-  const [selectedVehicle, setSelectedVehicle] = useState("");
-  const [notes, setNotes] = useState("");
-  
-  // Checklist
-  const [items, setItems] = useState([
-    { description: "", price: 0, is_approved: true }
-  ]);
+  const [evaluations, setEvaluations] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
 
-  const [loading, setLoading] = useState(false);
-  const [loadingData, setLoadingData] = useState(!!id); // Cargando si hay ID
+  // Estados para Modal de Eliminación
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [evalToDelete, setEvalToDelete] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  // 1. Cargar Clientes
   useEffect(() => {
-    apiGet("/clients/").then(setClients).catch(console.error);
+    loadEvaluations();
   }, []);
 
-  // 2. Si estamos EDITANDO, cargar la evaluación existente
-  useEffect(() => {
-    if (id) {
-      setLoadingData(true);
-      apiGet(`/evaluations/${id}/`)
-        .then(async (data) => {
-          setSelectedClient(data.client);
-          setNotes(data.notes);
-          setItems(data.items || []);
-          
-          // Cargar vehículos de este cliente para llenar el select
-          const clientData = await apiGet(`/clients/${data.client}/`);
-          setVehicles(clientData.vehicles || []);
-          setSelectedVehicle(data.vehicle); // Setear el vehículo DESPUÉS de tener la lista
-        })
-        .catch(() => alert("Error cargando evaluación"))
-        .finally(() => setLoadingData(false));
-    }
-  }, [id]);
-
-  // 3. Cambio de cliente (Solo si NO estamos cargando datos iniciales)
-  const handleClientChange = (clientId) => {
-    setSelectedClient(clientId);
-    setSelectedVehicle(""); 
-    setVehicles([]);
-    
-    if (clientId) {
-      apiGet(`/clients/${clientId}/`).then(data => {
-        setVehicles(data.vehicles || []);
-      });
-    }
-  };
-
-  // --- Checklist Logic ---
-  const handleAddItem = () => {
-    setItems([...items, { description: "", price: 0, is_approved: true }]);
-  };
-
-  const handleRemoveItem = (index) => {
-    setItems(items.filter((_, i) => i !== index));
-  };
-
-  const handleItemChange = (index, field, value) => {
-    const newItems = [...items];
-    newItems[index][field] = value;
-    setItems(newItems);
-  };
-
-  const totalBudget = items.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
-  const totalApproved = items
-    .filter(i => i.is_approved)
-    .reduce((sum, item) => sum + (Number(item.price) || 0), 0);
-
-  // --- Guardar ---
-  const handleSubmit = async () => {
-    if (!selectedClient || !selectedVehicle) return alert("Selecciona cliente y vehículo");
-    
+  const loadEvaluations = async () => {
     setLoading(true);
     try {
-      let evalId = id;
-
-      const payload = {
-        client: selectedClient,
-        vehicle: selectedVehicle,
-        notes: notes,
-        status: 'draft'
-      };
-
-      if (id) {
-        // MODO EDICIÓN
-        await apiPut(`/evaluations/${id}/`, payload);
-      } else {
-        // MODO CREACIÓN
-        const res = await apiPost("/evaluations/", payload);
-        evalId = res.id;
-      }
-
-      // Guardar Items (Siempre reemplazamos la lista)
-      await apiPost(`/evaluations/${evalId}/update_items/`, {
-        items: items.filter(i => i.description.trim() !== "")
-      });
-
-      alert(id ? "Evaluación actualizada." : "Evaluación creada.");
-      navigate("/evaluations"); 
-    } catch (e) {
-      console.error(e);
-      alert("Error al guardar");
+      const data = await apiGet("/evaluations/");
+      setEvaluations(data);
+    } catch (error) {
+      console.error(error);
     } finally {
       setLoading(false);
     }
   };
 
-  if (loadingData) return <div className="min-h-screen flex items-center justify-center text-slate-500">Cargando datos...</div>;
+  // Filtro de búsqueda
+  const filtered = evaluations.filter(ev => {
+    const clientName = ev.client_data ? `${ev.client_data.first_name} ${ev.client_data.last_name}` : "";
+    const vehicleInfo = ev.vehicle_data ? `${ev.vehicle_data.brand} ${ev.vehicle_data.model}` : "";
+    const text = `${clientName} ${vehicleInfo} #${ev.id}`.toLowerCase();
+    return text.includes(search.toLowerCase());
+  });
+
+  // --- Funciones de Acción ---
+  const handleCreate = () => {
+    navigate(PATHS.evaluationNew);
+  };
+
+  const handleEdit = (id) => {
+    navigate(`/evaluations/${id}`); 
+  };
+
+  const openDeleteModal = (ev) => {
+    setEvalToDelete(ev);
+    setIsDeleteModalOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!evalToDelete) return;
+    setIsDeleting(true);
+    try {
+      await apiDelete(`/evaluations/${evalToDelete.id}/`);
+      setEvaluations(prev => prev.filter(e => e.id !== evalToDelete.id));
+      setIsDeleteModalOpen(false);
+      setEvalToDelete(null);
+    } catch (e) {
+      alert("Error al eliminar.");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  // Helpers de formato
+  const formatDate = (dateStr) => new Date(dateStr).toLocaleDateString("es-CL");
+  
+  const calculateTotal = (ev) => {
+    if (!ev.items) return 0;
+    return ev.items.reduce((sum, item) => sum + Number(item.price || 0), 0);
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
-      <AppNavbar title={id ? "Editar Evaluación" : "Nueva Evaluación"} onOpenDrawer={() => setDrawerOpen(true)} />
+      <AppNavbar title="Evaluaciones" onOpenDrawer={() => setDrawerOpen(true)} />
       <AppDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
 
-      <main className="flex-1 mx-auto max-w-5xl w-full px-4 py-8">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold text-slate-900">{id ? `Editando Evaluación #${id}` : "Crear Diagnóstico"}</h1>
-          <button onClick={() => navigate("/evaluations")} className="text-sm text-slate-500 hover:text-indigo-600 font-medium">
-            Cancelar
-          </button>
+      <main className="flex-1 mx-auto max-w-7xl w-full px-4 py-8">
+        
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">Evaluaciones y Presupuestos</h1>
+            <p className="text-sm text-slate-500">Gestiona los diagnósticos realizados a los vehículos.</p>
+          </div>
+          
+          <div className="flex gap-3">
+            <div className="relative">
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Buscar cliente o vehículo..."
+                className="w-full sm:w-64 border border-slate-300 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              <svg className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
+            
+            <PrimaryButton title="Crear nueva evaluación" onClick={handleCreate}>
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+              </svg>
+              <span>Nueva Evaluación</span>
+            </PrimaryButton>
+          </div>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-          
-          {/* SECCIÓN 1: DATOS */}
-          <div className="p-6 border-b border-slate-100 bg-slate-50/30">
-            <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wide mb-4">1. Datos del Vehículo</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase">Cliente</label>
-                <select 
-                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                  value={selectedClient}
-                  onChange={(e) => handleClientChange(e.target.value)}
-                >
-                  <option value="">-- Seleccionar Cliente --</option>
-                  {clients.map(c => (
-                    <option key={c.id} value={c.id}>{c.first_name} {c.last_name}</option>
-                  ))}
-                </select>
-              </div>
+        {/* Tabla */}
+        <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-50 text-slate-500 border-b">
+                <tr>
+                  <th className="px-6 py-4 font-medium"># ID</th>
+                  <th className="px-6 py-4 font-medium">Fecha</th>
+                  <th className="px-6 py-4 font-medium">Cliente</th>
+                  <th className="px-6 py-4 font-medium">Vehículo</th>
+                  <th className="px-6 py-4 font-medium">Total Estimado</th>
+                  <th className="px-6 py-4 font-medium text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {loading ? (
+                  <tr><td colSpan="6" className="px-6 py-8 text-center text-slate-500">Cargando...</td></tr>
+                ) : filtered.length === 0 ? (
+                  <tr><td colSpan="6" className="px-6 py-8 text-center text-slate-500">No hay evaluaciones registradas.</td></tr>
+                ) : (
+                  filtered.map((ev) => (
+                    <tr key={ev.id} className="hover:bg-slate-50 transition-colors group">
+                      <td className="px-6 py-4 font-mono text-slate-600">#{ev.id}</td>
+                      <td className="px-6 py-4 text-slate-600">{formatDate(ev.created_at)}</td>
+                      <td className="px-6 py-4 font-medium text-slate-900">
+                        {ev.client_data ? `${ev.client_data.first_name} ${ev.client_data.last_name}` : "—"}
+                      </td>
+                      <td className="px-6 py-4 text-slate-600">
+                        {ev.vehicle_data ? `${ev.vehicle_data.brand} ${ev.vehicle_data.model}` : "—"}
+                      </td>
+                      <td className="px-6 py-4 font-medium text-slate-900">
+                        ${calculateTotal(ev).toLocaleString("es-CL")}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        
+                        {/* 🟢 AQUÍ ESTÁ EL CAMBIO: Botones SIEMPRE visibles */}
+                        <div className="flex justify-end gap-2">
+                          
+                          {/* Editar */}
+                          <IconButton onClick={() => handleEdit(ev.id)} title="Editar evaluación">
+                            <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                            </svg>
+                          </IconButton>
+                          
+                          {/* Eliminar */}
+                          <IconButton onClick={() => openDeleteModal(ev)} title="Eliminar evaluación" className="text-red-400 hover:bg-red-50 hover:text-red-600">
+                            <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </IconButton>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase">Vehículo</label>
-                <select 
-                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none disabled:bg-slate-100"
-                  value={selectedVehicle}
-                  onChange={(e) => setSelectedVehicle(e.target.value)}
-                  disabled={!selectedClient}
-                >
-                  <option value="">-- Seleccionar Vehículo --</option>
-                  {vehicles.map(v => (
-                    <option key={v.id} value={v.id}>{v.brand} {v.model} ({v.plate})</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {/* SECCIÓN 2: CHECKLIST */}
-          <div className="p-6">
-            <div className="flex justify-between items-end mb-4">
-              <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wide">2. Lista de Diagnóstico</h2>
-            </div>
-
-            <div className="border border-slate-200 rounded-xl overflow-hidden">
-              <div className="flex items-center bg-slate-100 px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
-                <div className="w-8 text-center">#</div>
-                <div className="w-10 text-center">OK</div>
-                <div className="flex-1 pl-4">Descripción del problema / Repuesto</div>
-                <div className="w-32 text-right pr-4">Costo</div>
-                <div className="w-8"></div>
-              </div>
-
-              <div className="divide-y divide-slate-100 bg-white">
-                {items.map((item, index) => (
-                  <div key={index} className="flex items-center px-4 py-3 hover:bg-slate-50 transition-colors group">
-                    <div className="w-8 text-center text-slate-400 font-mono text-sm">{index + 1}</div>
-                    <div className="w-10 flex justify-center">
-                      <input 
-                        type="checkbox"
-                        checked={item.is_approved}
-                        onChange={(e) => handleItemChange(index, 'is_approved', e.target.checked)}
-                        className="h-5 w-5 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 cursor-pointer"
-                      />
-                    </div>
-                    <div className="flex-1 pl-4">
-                      <input 
-                        type="text" 
-                        placeholder="Escribe el hallazgo..."
-                        className="w-full bg-transparent border-none p-0 text-sm focus:ring-0 placeholder:text-slate-400 text-slate-700"
-                        value={item.description}
-                        onChange={(e) => handleItemChange(index, 'description', e.target.value)}
-                      />
-                    </div>
-                    <div className="w-32 pl-2">
-                      <div className="relative rounded-md shadow-sm">
-                        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-2">
-                          <span className="text-slate-400 sm:text-xs">$</span>
                         </div>
-                        <input
-                          type="number"
-                          className="block w-full rounded-md border-0 py-1.5 pl-5 pr-3 text-right text-slate-900 ring-1 ring-inset ring-slate-300 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
-                          placeholder="0"
-                          value={item.price}
-                          onChange={(e) => handleItemChange(index, 'price', e.target.value)}
-                        />
-                      </div>
-                    </div>
-                    <div className="w-8 flex justify-end opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => handleRemoveItem(index)} className="text-slate-400 hover:text-red-500 transition-colors">
-                        <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                        {/* 🟢 FIN DEL CAMBIO */}
 
-              <button 
-                onClick={handleAddItem}
-                className="w-full py-3 bg-slate-50 hover:bg-slate-100 text-indigo-600 text-sm font-semibold border-t border-slate-200 transition-colors flex items-center justify-center gap-2"
-              >
-                <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" /></svg>
-                Agregar otro ítem
-              </button>
-            </div>
-
-            {/* Totales */}
-            <div className="mt-6 flex justify-end">
-              <div className="bg-slate-50 rounded-xl p-5 w-full max-w-xs border border-slate-100">
-                <div className="flex justify-between text-sm text-slate-500 mb-2">
-                  <span>Subtotal (Total):</span>
-                  <span>${totalBudget.toLocaleString('es-CL')}</span>
-                </div>
-                <div className="border-t border-slate-200 my-2"></div>
-                <div className="flex justify-between text-lg font-bold text-slate-900">
-                  <span>Total Aprobado:</span>
-                  <span className="text-emerald-600">${totalApproved.toLocaleString('es-CL')}</span>
-                </div>
-                <p className="text-xs text-slate-400 text-right mt-1">Monto estimado</p>
-              </div>
-            </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
-
-          {/* SECCIÓN 3: NOTAS Y GUARDAR */}
-          <div className="p-6 border-t border-slate-100 bg-slate-50/30">
-            <label className="block text-sm font-medium text-slate-700 mb-2">Observaciones Generales</label>
-            <textarea 
-              className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm h-24 focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Notas adicionales..."
-            />
-
-            <div className="mt-6 flex justify-end gap-3">
-              <button 
-                onClick={handleSubmit} 
-                disabled={loading}
-                className="px-6 py-2.5 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700 disabled:opacity-50 shadow-sm shadow-indigo-200 transition-all"
-              >
-                {loading ? "Guardando..." : (id ? "Actualizar Evaluación" : "Guardar Evaluación")}
-              </button>
-            </div>
-          </div>
-
         </div>
       </main>
       <AppFooter />
+
+      {/* --- Modal Confirmar Eliminación --- */}
+      <Transition appear show={isDeleteModalOpen} as={Fragment}>
+        <Dialog as="div" className="relative z-50" onClose={() => !isDeleting && setIsDeleteModalOpen(false)}>
+          <div className="fixed inset-0 bg-black/30 backdrop-blur-sm" aria-hidden="true" />
+          <div className="fixed inset-0 overflow-y-auto">
+            <div className="flex min-h-full items-center justify-center p-4 text-center">
+              <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-white p-6 text-left align-middle shadow-xl transition-all">
+                <div className="text-center">
+                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-100 mb-4">
+                    <svg className="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                    </svg>
+                  </div>
+                  <Dialog.Title as="h3" className="text-lg font-bold leading-6 text-slate-900">
+                    ¿Eliminar Evaluación?
+                  </Dialog.Title>
+                  <div className="mt-2">
+                    <p className="text-sm text-slate-500">
+                      Estás a punto de eliminar la evaluación <strong>#{evalToDelete?.id}</strong>. Esta acción no se puede deshacer.
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-6 grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    className="inline-flex w-full justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-base font-medium text-slate-700 shadow-sm hover:bg-slate-50 focus:outline-none sm:text-sm transition-colors"
+                    onClick={() => setIsDeleteModalOpen(false)}
+                    disabled={isDeleting}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    className="inline-flex w-full justify-center rounded-lg border border-transparent bg-red-600 px-4 py-2 text-base font-medium text-white shadow-sm hover:bg-red-700 focus:outline-none sm:text-sm transition-colors disabled:opacity-70"
+                    onClick={confirmDelete}
+                    disabled={isDeleting}
+                  >
+                    {isDeleting ? "Eliminando..." : "Eliminar"}
+                  </button>
+                </div>
+              </Dialog.Panel>
+            </div>
+          </div>
+        </Dialog>
+      </Transition>
     </div>
   );
 }
