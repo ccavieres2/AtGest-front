@@ -63,92 +63,6 @@ function Modal({ open, title, onClose, onSubmit, children, submitText = "Guardar
   );
 }
 
-// Modal Específico: Asignar Item
-function AssignItemModal({ item, onClose, onAssigned }) {
-  const [orders, setOrders] = useState([]);
-  const [loadingOrders, setLoadingOrders] = useState(true);
-  const [selectedOrder, setSelectedOrder] = useState("");
-  const [quantity, setQuantity] = useState(1);
-  const [errMsg, setErrMsg] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    async function loadActiveOrders() {
-      setLoadingOrders(true);
-      try {
-        const allOrders = await apiGet("/orders/");
-        const active = allOrders.filter(o => o.status !== 'done' && o.status !== 'cancelled');
-        setOrders(active);
-        if (active.length > 0) setSelectedOrder(active[0].id);
-      } catch (e) {
-        setErrMsg("No se pudieron cargar las órdenes.");
-      } finally {
-        setLoadingOrders(false);
-      }
-    }
-    loadActiveOrders();
-  }, []);
-
-  async function handleAssign() {
-    if (!selectedOrder) return setErrMsg("Debes seleccionar una orden.");
-    if (quantity <= 0) return setErrMsg("La cantidad debe ser mayor a 0.");
-    if (quantity > item.quantity) return setErrMsg(`Stock insuficiente. Disponible: ${item.quantity}`);
-
-    setSaving(true);
-    setErrMsg("");
-    try {
-      await apiPost(`/orders/${selectedOrder}/add-item/`, { item_id: item.id, quantity });
-      onAssigned();
-    } catch (e) {
-      try {
-        const parsed = JSON.parse(e.message);
-        setErrMsg(parsed.error || "Error al asignar.");
-      } catch { setErrMsg("Error al asignar."); }
-    } finally {
-      setSaving(false);
-    }
-  }
-  
-  if (!item) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
-        <h3 className="text-lg font-bold text-slate-900 mb-4">Asignar Producto</h3>
-        {errMsg && <div className="mb-4 rounded bg-red-100 text-red-700 px-3 py-2 text-sm">{errMsg}</div>}
-        
-        <div className="space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1">Producto</label>
-            <input value={`${item.name} (Stock: ${item.quantity})`} disabled className="w-full rounded-lg border bg-slate-50 px-3 py-2 text-sm text-slate-500"/>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1">Orden</label>
-            {loadingOrders ? <div className="text-sm text-slate-500">Cargando...</div> : (
-              <select value={selectedOrder} onChange={(e) => setSelectedOrder(e.target.value)} className="w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
-                {orders.length === 0 && <option value="">No hay órdenes activas</option>}
-                {orders.map(o => <option key={o.id} value={o.id}>#{o.id} - {o.client_name} ({o.vehicle_model})</option>)}
-              </select>
-            )}
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-700 mb-1">Cantidad</label>
-            <input type="number" min="1" max={item.quantity} value={quantity} onChange={(e) => setQuantity(Number(e.target.value))} className="w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
-          </div>
-        </div>
-
-        <div className="mt-6 flex justify-end gap-3">
-          <button onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Cancelar</button>
-          <button onClick={handleAssign} disabled={saving || loadingOrders || orders.length === 0} className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50 shadow-sm">
-            {saving ? "Asignando..." : "Asignar"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 const STATUS = { active: "Activo", inactive: "Inactivo", out: "Sin stock" };
 const STATUS_FROM_LABEL = { Activo: "active", Inactivo: "inactive", "Sin stock": "out" };
 
@@ -167,10 +81,6 @@ export default function Inventory() {
   const [saving, setSaving] = useState(false);
   const [errMsg, setErrMsg] = useState("");
   
-  // Estados Modal Asignar
-  const [assignModalOpen, setAssignModalOpen] = useState(false);
-  const [assigningItem, setAssigningItem] = useState(null);
-
   // Estados Modal Eliminación
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState(null);
@@ -224,20 +134,6 @@ export default function Inventory() {
     setForm({ ...it });
     setEditing(it.id);
     setModalOpen(true);
-  }
-
-  // Funciones Modal Asignar
-  function openAssign(id) {
-    const it = items.find((x) => x.id === id);
-    if (!it) return;
-    if (it.quantity <= 0) return alert("No hay stock para asignar.");
-    setAssigningItem(it);
-    setAssignModalOpen(true);
-  }
-  function handleOnAssigned() {
-    setAssignModalOpen(false);
-    setAssigningItem(null);
-    loadInventory();
   }
 
   // Lógica Guardar
@@ -371,13 +267,6 @@ export default function Inventory() {
                 
                 {/* Botones de acción SIEMPRE visibles */}
                 <div className="md:col-span-1 flex items-center justify-end gap-1">
-                  {/* Asignar */}
-                  <IconButton title="Asignar a Orden" onClick={() => openAssign(p.id)} disabled={p.quantity <= 0}>
-                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                    </svg>
-                  </IconButton>
-                  
                   {/* Editar (Icono Lápiz) */}
                   <IconButton title="Editar" onClick={() => openEdit(p.id)}>
                     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
@@ -456,9 +345,6 @@ export default function Inventory() {
         </div>
       </Modal>
       
-      {/* Modal Asignar */}
-      {assignModalOpen && <AssignItemModal item={assigningItem} onClose={() => setAssignModalOpen(false)} onAssigned={handleOnAssigned} />}
-
       {/* Modal Confirmar Eliminación */}
       <Transition appear show={isDeleteModalOpen} as={Fragment}>
         <Dialog as="div" className="relative z-50" onClose={() => !isDeleting && setIsDeleteModalOpen(false)}>

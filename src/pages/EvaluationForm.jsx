@@ -11,56 +11,59 @@ export default function EvaluationForm() {
   const { id } = useParams();
   const [drawerOpen, setDrawerOpen] = useState(false);
   
-  // Datos maestros
+  // --- ESTADOS DE DATOS ---
   const [clients, setClients] = useState([]);
   const [vehicles, setVehicles] = useState([]); 
-  
-  // Estado para guardar IDs de vehículos ocupados (con evaluación activa)
+  const [inventory, setInventory] = useState([]); // 🆕 Estado para Inventario
   const [busyVehicleIds, setBusyVehicleIds] = useState(new Set());
 
-  // Formulario
+  // --- FORMULARIO ---
   const [selectedClient, setSelectedClient] = useState("");
   const [selectedVehicle, setSelectedVehicle] = useState("");
   const [notes, setNotes] = useState("");
   
-  // Checklist
+  // Lista unificada (Diagnósticos manuales + Repuestos)
   const [items, setItems] = useState([
     { description: "", price: 0, is_approved: true }
   ]);
 
+  // 🆕 Estados para el selector de repuestos
+  const [selectedPartId, setSelectedPartId] = useState("");
+  const [partQty, setPartQty] = useState(1);
+
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(!!id);
 
-  // 1. Cargar Datos Iniciales (Clientes y Evaluaciones para calcular ocupados)
+  // 1. Cargar Datos Iniciales
   useEffect(() => {
     const loadInitialData = async () => {
       try {
-        const [clientsData, evalsData] = await Promise.all([
+        const [clientsData, evalsData, inventoryData] = await Promise.all([
           apiGet("/clients/"),
-          apiGet("/evaluations/")
+          apiGet("/evaluations/"),
+          apiGet("/inventory/") // 🆕 Cargar inventario
         ]);
+        
         setClients(clientsData);
+        setInventory(inventoryData); // Guardar inventario
 
-        // Lógica para identificar vehículos ocupados
+        // Calcular vehículos ocupados
         const busyIds = evalsData
           .filter(ev => {
-            // Si estamos editando, la evaluación actual NO cuenta como ocupada para sí misma
             if (id && ev.id === Number(id)) return false;
-            // Consideramos ocupados todos los que no estén rechazados/cancelados
             return ev.status !== 'rejected'; 
           })
-          .map(ev => ev.vehicle); // Extraemos los IDs de vehículos
-        
+          .map(ev => ev.vehicle);
         setBusyVehicleIds(new Set(busyIds));
 
       } catch (error) {
-        console.error("Error cargando datos iniciales", error);
+        console.error("Error cargando datos", error);
       }
     };
     loadInitialData();
   }, [id]);
 
-  // 2. Cargar datos específicos si estamos EDITANDO
+  // 2. Cargar datos si es EDICIÓN
   useEffect(() => {
     if (id) {
       setLoadingData(true);
@@ -70,7 +73,6 @@ export default function EvaluationForm() {
           setNotes(data.notes);
           setItems(data.items || []);
           
-          // Cargar vehículos del cliente
           if (data.client) {
             const clientData = await apiGet(`/clients/${data.client}/`);
             setVehicles(clientData.vehicles || []);
@@ -78,54 +80,72 @@ export default function EvaluationForm() {
           }
         })
         .catch(() => {
-          alert("Error al cargar la evaluación.");
+          alert("Error al cargar.");
           navigate("/evaluations");
         })
         .finally(() => setLoadingData(false));
     }
   }, [id, navigate]);
 
-  // 3. Manejo cambio de cliente
+  // Manejo cambio de cliente
   const handleClientChange = (clientId) => {
     setSelectedClient(clientId);
     setSelectedVehicle(""); 
     setVehicles([]);
-    
     if (clientId) {
-      // Buscamos los vehículos de este cliente (ya los tenemos en 'clients', pero aseguramos con fetch o filtro local)
       const clientFound = clients.find(c => c.id === Number(clientId));
       if (clientFound && clientFound.vehicles) {
         setVehicles(clientFound.vehicles);
       } else {
-        // Fallback por si acaso
         apiGet(`/clients/${clientId}/`).then(data => setVehicles(data.vehicles || []));
       }
     }
   };
 
-  // --- LÓGICA DE FILTRADO DE CLIENTES ---
-  // Solo mostramos clientes que tengan AL MENOS UN vehículo disponible
+  // Filtro Clientes Disponibles
   const availableClients = clients.filter(client => {
-    // Si no tiene vehículos, no lo mostramos
     if (!client.vehicles || client.vehicles.length === 0) return false;
-
-    // Verificamos si tiene al menos un vehículo que NO esté en la lista de ocupados
-    const hasFreeVehicle = client.vehicles.some(v => !busyVehicleIds.has(v.id));
-    
-    return hasFreeVehicle;
+    return client.vehicles.some(v => !busyVehicleIds.has(v.id));
   });
 
-  // --- Checklist Logic ---
-  const handleAddItem = () => {
+  // --- LÓGICA DEL CHECKLIST ---
+  
+  // 1. Agregar ítem manual (fila vacía)
+  const handleAddManualItem = () => {
     setItems([...items, { description: "", price: 0, is_approved: true }]);
   };
+
+  // 🆕 2. Agregar Repuesto del Inventario
+  const handleAddPartFromInventory = () => {
+    if (!selectedPartId) return alert("Selecciona un repuesto.");
+    if (partQty < 1) return alert("La cantidad debe ser al menos 1.");
+
+    const part = inventory.find(p => p.id === Number(selectedPartId));
+    if (!part) return;
+
+    // Crear el ítem con datos pre-llenados
+    const newItem = {
+      description: `[REPUESTO] ${part.name} (x${partQty})`, // Formato legible
+      price: Number(part.price) * partQty, // Precio total calculado
+      is_approved: true
+    };
+
+    setItems([...items, newItem]);
+    
+    // Resetear el mini-formulario de repuestos
+    setSelectedPartId("");
+    setPartQty(1);
+  };
+
   const handleRemoveItem = (index) => setItems(items.filter((_, i) => i !== index));
+  
   const handleItemChange = (index, field, value) => {
     const newItems = [...items];
     newItems[index][field] = value;
     setItems(newItems);
   };
 
+  // Totales
   const totalBudget = items.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
   const totalApproved = items
     .filter(i => i.is_approved)
@@ -133,7 +153,7 @@ export default function EvaluationForm() {
 
   // Guardar
   const handleSubmit = async () => {
-    if (!selectedClient || !selectedVehicle) return alert("Selecciona cliente y vehículo");
+    if (!selectedClient || !selectedVehicle) return alert("Faltan datos del vehículo");
     setLoading(true);
     try {
       let evalId = id;
@@ -155,22 +175,17 @@ export default function EvaluationForm() {
         items: items.filter(i => i.description.trim() !== "")
       });
 
-      alert(id ? "Evaluación actualizada." : "Evaluación creada.");
+      alert("Guardado correctamente.");
       navigate("/evaluations"); 
     } catch (e) {
       console.error(e);
-      let msg = "Error al guardar.";
-      try {
-        const errJson = JSON.parse(e.message);
-        if (errJson.vehicle) msg = errJson.vehicle[0];
-      } catch {}
-      alert(msg);
+      alert("Error al guardar.");
     } finally {
       setLoading(false);
     }
   };
 
-  if (loadingData) return <div className="min-h-screen flex items-center justify-center text-slate-500">Cargando datos...</div>;
+  if (loadingData) return <div className="min-h-screen flex items-center justify-center text-slate-500">Cargando...</div>;
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
@@ -179,74 +194,52 @@ export default function EvaluationForm() {
 
       <main className="flex-1 mx-auto max-w-5xl w-full px-4 py-8">
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold text-slate-900">{id ? `Editando Evaluación #${id}` : "Crear Diagnóstico"}</h1>
-          <button onClick={() => navigate("/evaluations")} className="text-sm text-slate-500 hover:text-indigo-600 font-medium">
-            Cancelar
-          </button>
+          <h1 className="text-2xl font-bold text-slate-900">{id ? `Editando #${id}` : "Crear Diagnóstico"}</h1>
+          <button onClick={() => navigate("/evaluations")} className="text-sm text-slate-500 hover:text-indigo-600 font-medium">Cancelar</button>
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           
-          {/* SECCIÓN 1: DATOS */}
+          {/* 1. DATOS VEHÍCULO */}
           <div className="p-6 border-b border-slate-100 bg-slate-50/30">
             <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wide mb-4">1. Datos del Vehículo</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase">Cliente</label>
                 <select 
-                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
                   value={selectedClient}
                   onChange={(e) => handleClientChange(e.target.value)}
                 >
-                  <option value="">-- Seleccionar Cliente --</option>
-                  {/* Usamos la lista FILTRADA (availableClients) */}
-                  {availableClients.map(c => (
-                    <option key={c.id} value={c.id}>{c.first_name} {c.last_name}</option>
-                  ))}
+                  <option value="">-- Seleccionar --</option>
+                  {availableClients.map(c => <option key={c.id} value={c.id}>{c.first_name} {c.last_name}</option>)}
                 </select>
-                {availableClients.length === 0 && clients.length > 0 && (
-                  <p className="text-xs text-amber-600 mt-1">
-                    *Todos tus clientes actuales ya tienen evaluaciones activas o no tienen vehículos.
-                  </p>
-                )}
               </div>
-
               <div>
                 <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase">Vehículo</label>
                 <select 
-                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none disabled:bg-slate-100"
+                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100"
                   value={selectedVehicle}
                   onChange={(e) => setSelectedVehicle(e.target.value)}
                   disabled={!selectedClient}
                 >
-                  <option value="">-- Seleccionar Vehículo --</option>
-                  
-                  {/* Filtramos también la lista de vehículos */}
+                  <option value="">-- Seleccionar --</option>
                   {vehicles
-                    .filter(v => {
-                      // Mostrar si es el seleccionado actualmente
-                      if (v.id === selectedVehicle) return true;
-                      // Ocultar si está ocupado
-                      if (busyVehicleIds.has(v.id)) return false;
-                      return true;
-                    })
-                    .map(v => (
-                      <option key={v.id} value={v.id}>
-                        {v.brand} {v.model} ({v.plate})
-                      </option>
-                  ))}
+                    .filter(v => v.id === selectedVehicle || !busyVehicleIds.has(v.id))
+                    .map(v => <option key={v.id} value={v.id}>{v.brand} {v.model} ({v.plate})</option>)
+                  }
                 </select>
               </div>
             </div>
           </div>
 
-          {/* SECCIÓN 2: CHECKLIST (Igual que antes) */}
+          {/* 2. LISTA DIAGNÓSTICO */}
           <div className="p-6">
             <div className="flex justify-between items-end mb-4">
-              <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wide">2. Lista de Diagnóstico</h2>
+              <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wide">2. Lista de Diagnóstico y Repuestos</h2>
             </div>
 
-            <div className="border border-slate-200 rounded-xl overflow-hidden">
+            <div className="border border-slate-200 rounded-xl overflow-hidden mb-6">
               <div className="flex items-center bg-slate-100 px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
                 <div className="w-8 text-center">#</div>
                 <div className="w-10 text-center">OK</div>
@@ -270,44 +263,92 @@ export default function EvaluationForm() {
                     <div className="flex-1 pl-4">
                       <input 
                         type="text" 
-                        placeholder="Escribe el hallazgo..."
-                        className="w-full bg-transparent border-none p-0 text-sm focus:ring-0 placeholder:text-slate-400 text-slate-700"
+                        className={`w-full bg-transparent border-none p-0 text-sm focus:ring-0 placeholder:text-slate-400 ${item.description.startsWith('[REPUESTO]') ? 'text-indigo-700 font-medium' : 'text-slate-700'}`}
                         value={item.description}
                         onChange={(e) => handleItemChange(index, 'description', e.target.value)}
+                        placeholder="Descripción..."
                       />
                     </div>
                     <div className="w-32 pl-2">
                       <input
                         type="number"
-                        className="block w-full rounded-md border-0 py-1.5 pl-5 pr-3 text-right text-slate-900 ring-1 ring-inset ring-slate-300 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
-                        placeholder="0"
+                        className="block w-full rounded-md border-0 py-1.5 pl-5 pr-3 text-right text-slate-900 ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-600 sm:text-sm sm:leading-6"
                         value={item.price}
                         onChange={(e) => handleItemChange(index, 'price', e.target.value)}
                       />
                     </div>
                     <div className="w-8 flex justify-end">
-                      <button onClick={() => handleRemoveItem(index)} className="text-slate-400 hover:text-red-500 transition-colors">
+                      <button onClick={() => handleRemoveItem(index)} className="text-slate-400 hover:text-red-500">
                         <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
                       </button>
                     </div>
                   </div>
                 ))}
+                {items.length === 0 && <div className="p-4 text-center text-sm text-slate-400">No hay ítems agregados.</div>}
               </div>
-
-              <button 
-                onClick={handleAddItem}
-                className="w-full py-3 bg-slate-50 hover:bg-slate-100 text-indigo-600 text-sm font-semibold border-t border-slate-200 transition-colors flex items-center justify-center gap-2"
-              >
-                <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" /></svg>
-                Agregar otro ítem
-              </button>
             </div>
 
-            {/* Totales */}
+            {/* --- ZONA DE ACCIONES (AGREGAR MANUAL O REPUESTO) --- */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              
+              {/* OPCIÓN A: Agregar Manual */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                <h3 className="text-xs font-bold text-slate-500 uppercase mb-3">Agregar Ítem Manual</h3>
+                <button 
+                  onClick={handleAddManualItem}
+                  className="w-full py-2 bg-white hover:bg-slate-100 text-slate-700 text-sm font-medium border border-slate-300 rounded-lg transition-colors flex items-center justify-center gap-2"
+                >
+                  <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-slate-400"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" /></svg>
+                  Agregar Fila Vacía
+                </button>
+                <p className="text-xs text-slate-400 mt-2 text-center">Para mano de obra o servicios.</p>
+              </div>
+
+              {/* OPCIÓN B: Agregar Repuesto (Inventario) */}
+              <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4">
+                <h3 className="text-xs font-bold text-indigo-700 uppercase mb-3">Agregar Repuesto del Inventario</h3>
+                <div className="flex gap-2 mb-2">
+                  <div className="flex-1">
+                    <select 
+                      className="w-full border border-indigo-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                      value={selectedPartId}
+                      onChange={(e) => setSelectedPartId(e.target.value)}
+                    >
+                      <option value="">Seleccionar repuesto...</option>
+                      {inventory
+                        .filter(i => i.quantity > 0) // Solo mostrar con stock
+                        .map(i => (
+                          <option key={i.id} value={i.id}>
+                            {i.name} (${Number(i.price).toLocaleString('es-CL')}) - Stock: {i.quantity}
+                          </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="w-20">
+                    <input 
+                      type="number" 
+                      min="1" 
+                      className="w-full border border-indigo-200 rounded-lg px-2 py-2 text-sm text-center outline-none focus:ring-2 focus:ring-indigo-500"
+                      value={partQty}
+                      onChange={(e) => setPartQty(Number(e.target.value))}
+                    />
+                  </div>
+                </div>
+                <button 
+                  onClick={handleAddPartFromInventory}
+                  className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-colors shadow-sm"
+                >
+                  + Agregar Repuesto
+                </button>
+              </div>
+
+            </div>
+
+            {/* TOTALES */}
             <div className="mt-6 flex justify-end">
               <div className="bg-slate-50 rounded-xl p-5 w-full max-w-xs border border-slate-100">
                 <div className="flex justify-between text-sm text-slate-500 mb-2">
-                  <span>Subtotal (Total):</span>
+                  <span>Total Estimado:</span>
                   <span>${totalBudget.toLocaleString('es-CL')}</span>
                 </div>
                 <div className="border-t border-slate-200 my-2"></div>
@@ -319,7 +360,7 @@ export default function EvaluationForm() {
             </div>
           </div>
 
-          {/* SECCIÓN 3: GUARDAR */}
+          {/* 3. NOTAS Y GUARDAR */}
           <div className="p-6 border-t border-slate-100 bg-slate-50/30">
             <label className="block text-sm font-medium text-slate-700 mb-2">Observaciones Generales</label>
             <textarea 
