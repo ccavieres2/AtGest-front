@@ -8,13 +8,13 @@ import AppFooter from "../components/layout/AppFooter";
 
 export default function EvaluationForm() {
   const navigate = useNavigate();
-  const { id } = useParams();
+  const { id } = useParams(); // Si hay ID, estamos editando
   const [drawerOpen, setDrawerOpen] = useState(false);
   
   // --- ESTADOS DE DATOS ---
   const [clients, setClients] = useState([]);
   const [vehicles, setVehicles] = useState([]); 
-  const [inventory, setInventory] = useState([]); // 🆕 Estado para Inventario
+  const [inventory, setInventory] = useState([]); 
   const [busyVehicleIds, setBusyVehicleIds] = useState(new Set());
 
   // --- FORMULARIO ---
@@ -22,12 +22,12 @@ export default function EvaluationForm() {
   const [selectedVehicle, setSelectedVehicle] = useState("");
   const [notes, setNotes] = useState("");
   
-  // Lista unificada (Diagnósticos manuales + Repuestos)
+  // Lista unificada
   const [items, setItems] = useState([
     { description: "", price: 0, is_approved: true }
   ]);
 
-  // 🆕 Estados para el selector de repuestos
+  // Estados para el selector de repuestos
   const [selectedPartId, setSelectedPartId] = useState("");
   const [partQty, setPartQty] = useState(1);
 
@@ -41,13 +41,12 @@ export default function EvaluationForm() {
         const [clientsData, evalsData, inventoryData] = await Promise.all([
           apiGet("/clients/"),
           apiGet("/evaluations/"),
-          apiGet("/inventory/") // 🆕 Cargar inventario
+          apiGet("/inventory/")
         ]);
         
         setClients(clientsData);
-        setInventory(inventoryData); // Guardar inventario
+        setInventory(inventoryData);
 
-        // Calcular vehículos ocupados
         const busyIds = evalsData
           .filter(ev => {
             if (id && ev.id === Number(id)) return false;
@@ -104,18 +103,18 @@ export default function EvaluationForm() {
 
   // Filtro Clientes Disponibles
   const availableClients = clients.filter(client => {
+    // Si estamos editando, siempre mostrar el cliente actual (aunque sus autos estén ocupados)
+    if (id && client.id === Number(selectedClient)) return true;
+
     if (!client.vehicles || client.vehicles.length === 0) return false;
     return client.vehicles.some(v => !busyVehicleIds.has(v.id));
   });
 
   // --- LÓGICA DEL CHECKLIST ---
-  
-  // 1. Agregar ítem manual (fila vacía)
   const handleAddManualItem = () => {
     setItems([...items, { description: "", price: 0, is_approved: true }]);
   };
 
-  // 🆕 2. Agregar Repuesto del Inventario
   const handleAddPartFromInventory = () => {
     if (!selectedPartId) return alert("Selecciona un repuesto.");
     if (partQty < 1) return alert("La cantidad debe ser al menos 1.");
@@ -123,16 +122,13 @@ export default function EvaluationForm() {
     const part = inventory.find(p => p.id === Number(selectedPartId));
     if (!part) return;
 
-    // Crear el ítem con datos pre-llenados
     const newItem = {
-      description: `[REPUESTO] ${part.name} (x${partQty})`, // Formato legible
-      price: Number(part.price) * partQty, // Precio total calculado
+      description: `[REPUESTO] ${part.name} (x${partQty})`, 
+      price: Number(part.price) * partQty, 
       is_approved: true
     };
 
     setItems([...items, newItem]);
-    
-    // Resetear el mini-formulario de repuestos
     setSelectedPartId("");
     setPartQty(1);
   };
@@ -200,16 +196,17 @@ export default function EvaluationForm() {
 
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           
-          {/* 1. DATOS VEHÍCULO */}
+          {/* 1. DATOS VEHÍCULO (Bloqueados si hay ID) */}
           <div className="p-6 border-b border-slate-100 bg-slate-50/30">
             <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wide mb-4">1. Datos del Vehículo</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase">Cliente</label>
                 <select 
-                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100 disabled:text-slate-500"
                   value={selectedClient}
                   onChange={(e) => handleClientChange(e.target.value)}
+                  disabled={!!id} // 👈 BLOQUEADO AL EDITAR
                 >
                   <option value="">-- Seleccionar --</option>
                   {availableClients.map(c => <option key={c.id} value={c.id}>{c.first_name} {c.last_name}</option>)}
@@ -218,10 +215,10 @@ export default function EvaluationForm() {
               <div>
                 <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase">Vehículo</label>
                 <select 
-                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100"
+                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100 disabled:text-slate-500"
                   value={selectedVehicle}
                   onChange={(e) => setSelectedVehicle(e.target.value)}
-                  disabled={!selectedClient}
+                  disabled={!selectedClient || !!id} // 👈 BLOQUEADO AL EDITAR
                 >
                   <option value="">-- Seleccionar --</option>
                   {vehicles
@@ -288,10 +285,8 @@ export default function EvaluationForm() {
               </div>
             </div>
 
-            {/* --- ZONA DE ACCIONES (AGREGAR MANUAL O REPUESTO) --- */}
+            {/* ZONA DE ACCIONES */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              
-              {/* OPCIÓN A: Agregar Manual */}
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
                 <h3 className="text-xs font-bold text-slate-500 uppercase mb-3">Agregar Ítem Manual</h3>
                 <button 
@@ -301,10 +296,8 @@ export default function EvaluationForm() {
                   <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-slate-400"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" /></svg>
                   Agregar Fila Vacía
                 </button>
-                <p className="text-xs text-slate-400 mt-2 text-center">Para mano de obra o servicios.</p>
               </div>
 
-              {/* OPCIÓN B: Agregar Repuesto (Inventario) */}
               <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4">
                 <h3 className="text-xs font-bold text-indigo-700 uppercase mb-3">Agregar Repuesto del Inventario</h3>
                 <div className="flex gap-2 mb-2">
@@ -316,7 +309,7 @@ export default function EvaluationForm() {
                     >
                       <option value="">Seleccionar repuesto...</option>
                       {inventory
-                        .filter(i => i.quantity > 0) // Solo mostrar con stock
+                        .filter(i => i.quantity > 0)
                         .map(i => (
                           <option key={i.id} value={i.id}>
                             {i.name} (${Number(i.price).toLocaleString('es-CL')}) - Stock: {i.quantity}
@@ -341,7 +334,6 @@ export default function EvaluationForm() {
                   + Agregar Repuesto
                 </button>
               </div>
-
             </div>
 
             {/* TOTALES */}
