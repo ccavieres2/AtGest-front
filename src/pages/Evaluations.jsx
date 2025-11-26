@@ -111,7 +111,12 @@ export default function Evaluations() {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
-      <AppNavbar title="Evaluaciones" onOpenDrawer={() => setDrawerOpen(true)} />
+      {/* 🟢 CORRECCIÓN AQUÍ: Se agregó la propiedad onLogout */}
+      <AppNavbar 
+        title="Evaluaciones" 
+        onOpenDrawer={() => setDrawerOpen(true)} 
+        onLogout={() => { localStorage.clear(); location.href = "/login"; }}
+      />
       <AppDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
 
       <main className="flex-1 mx-auto max-w-7xl w-full px-4 py-8">
@@ -180,7 +185,6 @@ export default function Evaluations() {
                       </td>
                       <td className="px-6 py-4 text-right">
                         
-                        {/* 🟢 AQUÍ ESTÁ EL CAMBIO: Botones SIEMPRE visibles */}
                         <div className="flex justify-end gap-2">
                           
                           {/* Editar */}
@@ -199,7 +203,6 @@ export default function Evaluations() {
                           </IconButton>
 
                         </div>
-                        {/* 🟢 FIN DEL CAMBIO */}
 
                       </td>
                     </tr>

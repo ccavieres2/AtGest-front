@@ -220,7 +220,12 @@ export default function EvaluationForm() {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
-      <AppNavbar title={id ? "Editar Evaluación" : "Nueva Evaluación"} onOpenDrawer={() => setDrawerOpen(true)} />
+      {/* 🟢 AQUÍ ESTÁ EL CAMBIO: Se agregó onLogout */}
+      <AppNavbar 
+        title={id ? "Editar Evaluación" : "Nueva Evaluación"} 
+        onOpenDrawer={() => setDrawerOpen(true)}
+        onLogout={() => { localStorage.clear(); location.href = "/login"; }}
+      />
       <AppDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
 
       <main className="flex-1 mx-auto max-w-5xl w-full px-4 py-8">
