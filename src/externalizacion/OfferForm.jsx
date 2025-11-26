@@ -1,5 +1,6 @@
+// src/externalizacion/OfferForm.jsx
 import { useState, useMemo, Fragment } from "react"; 
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom"; // 👈 AQUÍ ESTABA EL ERROR, FALTABA ESTO
 import { apiPostMultipart, apiGet } from "../lib/api";
 import AppNavbar from "../components/layout/AppNavbar";
 import AppDrawer from "../components/layout/AppDrawer";
@@ -66,7 +67,7 @@ const CustomToolbar = ({ label, onNavigate }) => {
 
 
 export default function OfferForm() {
-  const navigate = useNavigate();
+  const navigate = useNavigate(); // 👈 Y AQUÍ LO INICIALIZAMOS
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   const [form, setForm] = useState({

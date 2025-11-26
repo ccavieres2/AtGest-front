@@ -368,7 +368,7 @@ export default function EvaluationForm() {
                 disabled={loading}
                 className="px-6 py-2.5 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700 disabled:opacity-50 shadow-sm shadow-indigo-200 transition-all"
               >
-                {loading ? "Guardando..." : (id ? "Actualizar Evaluación" : "Guardar Evaluación")}
+                {loading ? "Guardando..." : (id ? "Guardar Cambios" : "Guardar Evaluación")}
               </button>
             </div>
           </div>
