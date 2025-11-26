@@ -23,6 +23,7 @@ export default function EvaluationForm() {
   const [notes, setNotes] = useState("");
   
   // Lista unificada
+  // NOTA: Agregamos campos extra (inventoryId, qty, unitPrice) para lógica interna del front
   const [items, setItems] = useState([
     { description: "", price: 0, is_approved: true }
   ]);
@@ -70,6 +71,9 @@ export default function EvaluationForm() {
         .then(async (data) => {
           setSelectedClient(data.client);
           setNotes(data.notes);
+          
+          // Al cargar del backend, no tenemos el ID del inventario ni la cantidad desglosada.
+          // Se cargan como ítems simples.
           setItems(data.items || []);
           
           if (data.client) {
@@ -115,6 +119,7 @@ export default function EvaluationForm() {
     setItems([...items, { description: "", price: 0, is_approved: true }]);
   };
 
+  // ⬇️⬇️ LÓGICA CORREGIDA: AGREGAR O SUMAR REPUESTO ⬇️⬇️
   const handleAddPartFromInventory = () => {
     if (!selectedPartId) return alert("Selecciona un repuesto.");
     if (partQty < 1) return alert("La cantidad debe ser al menos 1.");
@@ -122,16 +127,45 @@ export default function EvaluationForm() {
     const part = inventory.find(p => p.id === Number(selectedPartId));
     if (!part) return;
 
-    const newItem = {
-      description: `[REPUESTO] ${part.name} (x${partQty})`, 
-      price: Number(part.price) * partQty, 
-      is_approved: true
-    };
+    // Buscamos si este repuesto ya está en la lista actual (por inventoryId)
+    const existingIndex = items.findIndex(item => item.inventoryId === part.id);
 
-    setItems([...items, newItem]);
+    if (existingIndex >= 0) {
+      // --- CASO 1: YA EXISTE, SUMAR CANTIDAD ---
+      const newItems = [...items];
+      const itemToUpdate = newItems[existingIndex];
+
+      // Calculamos nueva cantidad
+      const currentQty = itemToUpdate.qty || 1; // Si viene de DB podría no tener qty, asumimos 1 o lo reiniciamos
+      const newQty = currentQty + partQty;
+
+      // Actualizamos datos
+      itemToUpdate.qty = newQty;
+      itemToUpdate.unitPrice = Number(part.price); // Aseguramos precio actualizado
+      itemToUpdate.price = Number(part.price) * newQty; // Precio total = Unitario * Cantidad Total
+      itemToUpdate.description = `[REPUESTO] ${part.name} (x${newQty})`; // Actualizamos texto
+
+      setItems(newItems);
+
+    } else {
+      // --- CASO 2: NO EXISTE, CREAR NUEVO ---
+      const newItem = {
+        description: `[REPUESTO] ${part.name} (x${partQty})`, 
+        price: Number(part.price) * partQty, 
+        is_approved: true,
+        // Guardamos metadatos ocultos para la lógica del frontend
+        inventoryId: part.id,
+        qty: partQty,
+        unitPrice: Number(part.price)
+      };
+      setItems([...items, newItem]);
+    }
+
+    // Resetear inputs
     setSelectedPartId("");
     setPartQty(1);
   };
+  // ⬆️⬆️ FIN LÓGICA CORREGIDA ⬆️⬆️
 
   const handleRemoveItem = (index) => setItems(items.filter((_, i) => i !== index));
   
@@ -167,6 +201,7 @@ export default function EvaluationForm() {
         evalId = res.id;
       }
 
+      // Enviamos los items (el backend ignorará inventoryId, qty, unitPrice automáticamente)
       await apiPost(`/evaluations/${evalId}/update_items/`, {
         items: items.filter(i => i.description.trim() !== "")
       });
@@ -206,7 +241,7 @@ export default function EvaluationForm() {
                   className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100 disabled:text-slate-500"
                   value={selectedClient}
                   onChange={(e) => handleClientChange(e.target.value)}
-                  disabled={!!id} // 👈 BLOQUEADO AL EDITAR
+                  disabled={!!id} 
                 >
                   <option value="">-- Seleccionar --</option>
                   {availableClients.map(c => <option key={c.id} value={c.id}>{c.first_name} {c.last_name}</option>)}
@@ -218,7 +253,7 @@ export default function EvaluationForm() {
                   className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100 disabled:text-slate-500"
                   value={selectedVehicle}
                   onChange={(e) => setSelectedVehicle(e.target.value)}
-                  disabled={!selectedClient || !!id} // 👈 BLOQUEADO AL EDITAR
+                  disabled={!selectedClient || !!id}
                 >
                   <option value="">-- Seleccionar --</option>
                   {vehicles
@@ -241,46 +276,57 @@ export default function EvaluationForm() {
                 <div className="w-8 text-center">#</div>
                 <div className="w-10 text-center">OK</div>
                 <div className="flex-1 pl-4">Descripción</div>
-                <div className="w-32 text-right pr-4">Costo</div>
+                <div className="w-32 text-right pr-4">Costo Total</div>
                 <div className="w-8"></div>
               </div>
 
               <div className="divide-y divide-slate-100 bg-white">
-                {items.map((item, index) => (
-                  <div key={index} className="flex items-center px-4 py-3 hover:bg-slate-50 transition-colors group">
-                    <div className="w-8 text-center text-slate-400 font-mono text-sm">{index + 1}</div>
-                    <div className="w-10 flex justify-center">
-                      <input 
-                        type="checkbox"
-                        checked={item.is_approved}
-                        onChange={(e) => handleItemChange(index, 'is_approved', e.target.checked)}
-                        className="h-5 w-5 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 cursor-pointer"
-                      />
+                {items.map((item, index) => {
+                  // 🟢 DETECTAR SI ES UN REPUESTO
+                  const isSparePart = item.description.startsWith('[REPUESTO]');
+                  
+                  return (
+                    <div key={index} className="flex items-center px-4 py-3 hover:bg-slate-50 transition-colors group">
+                      <div className="w-8 text-center text-slate-400 font-mono text-sm">{index + 1}</div>
+                      <div className="w-10 flex justify-center">
+                        <input 
+                          type="checkbox"
+                          checked={item.is_approved}
+                          onChange={(e) => handleItemChange(index, 'is_approved', e.target.checked)}
+                          className="h-5 w-5 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 cursor-pointer"
+                        />
+                      </div>
+                      <div className="flex-1 pl-4">
+                        <input 
+                          type="text" 
+                          // 🟢 LOGICA DE BLOQUEO: Si empieza con [REPUESTO], es ReadOnly
+                          readOnly={isSparePart}
+                          className={`w-full border-none p-1 text-sm focus:ring-0 placeholder:text-slate-400 rounded 
+                            ${isSparePart 
+                              ? 'text-indigo-700 font-semibold bg-indigo-50 cursor-not-allowed' 
+                              : 'text-slate-700 bg-transparent'
+                            }`}
+                          value={item.description}
+                          onChange={(e) => handleItemChange(index, 'description', e.target.value)}
+                          placeholder="Descripción..."
+                        />
+                      </div>
+                      <div className="w-32 pl-2">
+                        <input
+                          type="number"
+                          className="block w-full rounded-md border-0 py-1.5 pl-5 pr-3 text-right text-slate-900 ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                          value={item.price}
+                          onChange={(e) => handleItemChange(index, 'price', e.target.value)}
+                        />
+                      </div>
+                      <div className="w-8 flex justify-end">
+                        <button onClick={() => handleRemoveItem(index)} className="text-slate-400 hover:text-red-500">
+                          <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex-1 pl-4">
-                      <input 
-                        type="text" 
-                        className={`w-full bg-transparent border-none p-0 text-sm focus:ring-0 placeholder:text-slate-400 ${item.description.startsWith('[REPUESTO]') ? 'text-indigo-700 font-medium' : 'text-slate-700'}`}
-                        value={item.description}
-                        onChange={(e) => handleItemChange(index, 'description', e.target.value)}
-                        placeholder="Descripción..."
-                      />
-                    </div>
-                    <div className="w-32 pl-2">
-                      <input
-                        type="number"
-                        className="block w-full rounded-md border-0 py-1.5 pl-5 pr-3 text-right text-slate-900 ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-600 sm:text-sm sm:leading-6"
-                        value={item.price}
-                        onChange={(e) => handleItemChange(index, 'price', e.target.value)}
-                      />
-                    </div>
-                    <div className="w-8 flex justify-end">
-                      <button onClick={() => handleRemoveItem(index)} className="text-slate-400 hover:text-red-500">
-                        <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
                 {items.length === 0 && <div className="p-4 text-center text-sm text-slate-400">No hay ítems agregados.</div>}
               </div>
             </div>
