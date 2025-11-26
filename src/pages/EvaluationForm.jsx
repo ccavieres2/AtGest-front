@@ -23,6 +23,9 @@ export default function EvaluationForm() {
   const [selectedVehicle, setSelectedVehicle] = useState("");
   const [notes, setNotes] = useState("");
   
+  // Estado para saber si ya está aprobada/rechazada y ocultar botones
+  const [currentStatus, setCurrentStatus] = useState(""); 
+  
   const [items, setItems] = useState([
     { description: "", price: 0, is_approved: true }
   ]);
@@ -33,6 +36,7 @@ export default function EvaluationForm() {
 
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(!!id);
+  const [processingAction, setProcessingAction] = useState(false); // Para deshabilitar botones al actuar
 
   // 1. Cargar Datos Maestros
   useEffect(() => {
@@ -64,27 +68,20 @@ export default function EvaluationForm() {
   // 2. LÓGICA DE RESTAURACIÓN Y CARGA DE DATOS
   useEffect(() => {
     const loadOrRestore = async () => {
-      // A) Intentar leer datos de sesión (si volvemos de Externalización)
       const pendingServiceStr = sessionStorage.getItem("pendingExternalService");
       const savedStateStr = sessionStorage.getItem("tempEvaluationState");
 
       if (savedStateStr) {
         console.log("Restaurando estado desde sesión...");
         const savedState = JSON.parse(savedStateStr);
-        
-        // Restaurar campos básicos
         setSelectedClient(savedState.client);
         setSelectedVehicle(savedState.vehicle);
         setNotes(savedState.notes);
         
-        // Recuperar lista previa de items
         let currentItems = savedState.items || [];
 
-        // SI HAY UN SERVICIO PENDIENTE DE AGREGAR
         if (pendingServiceStr) {
           const service = JSON.parse(pendingServiceStr);
-          
-          // Evitar duplicados: verificamos si el último ítem es el mismo
           const isDuplicate = currentItems.length > 0 && 
                               currentItems[currentItems.length - 1].externalId === service.id;
 
@@ -98,22 +95,18 @@ export default function EvaluationForm() {
             currentItems = [...currentItems, newItem];
           }
         }
-
         setItems(currentItems);
 
-        // Cargar vehículos del cliente restaurado para que el select funcione
         if (savedState.client) {
           try {
             const clientData = await apiGet(`/clients/${savedState.client}/`);
             setVehicles(clientData.vehicles || []);
           } catch (e) { console.error("Error cargando vehículos al restaurar", e); }
         }
-        
         setLoadingData(false);
         return; 
       }
 
-      // B) Si no hay estado temporal, cargamos normal del backend (si es edición)
       if (id) {
         setLoadingData(true);
         try {
@@ -121,6 +114,7 @@ export default function EvaluationForm() {
           setSelectedClient(data.client);
           setNotes(data.notes);
           setItems(data.items || []);
+          setCurrentStatus(data.status); // Guardamos el estado actual
           
           if (data.client) {
             const clientData = await apiGet(`/clients/${data.client}/`);
@@ -140,20 +134,14 @@ export default function EvaluationForm() {
     loadOrRestore();
   }, [id, navigate]);
 
-  // --- NAVEGACIÓN A EXTERNALIZACIÓN ---
+  // --- NAVEGACIÓN Y HELPERS ---
   const handleGoToExternal = () => {
-    const stateToSave = {
-      client: selectedClient,
-      vehicle: selectedVehicle,
-      notes: notes,
-      items: items
-    };
+    const stateToSave = { client: selectedClient, vehicle: selectedVehicle, notes: notes, items: items };
     sessionStorage.setItem("tempEvaluationState", JSON.stringify(stateToSave));
     const returnPath = location.pathname; 
     navigate(`/external?selectMode=true&returnUrl=${encodeURIComponent(returnPath)}`);
   };
 
-  // --- MANEJADORES DE CAMBIOS ---
   const handleClientChange = (clientId) => {
     setSelectedClient(clientId);
     setSelectedVehicle(""); 
@@ -217,9 +205,13 @@ export default function EvaluationForm() {
     setItems(newItems);
   };
 
-  // --- GUARDAR ---
-  const handleSubmit = async () => {
+  // --- ACCIONES PRINCIPALES ---
+
+  // 1. GUARDAR (Borrador o Actualizar)
+  const handleSubmit = async (e) => {
+    if(e) e.preventDefault();
     if (!selectedClient || !selectedVehicle) return alert("Faltan datos del vehículo");
+    
     setLoading(true);
     try {
       let evalId = id;
@@ -227,7 +219,7 @@ export default function EvaluationForm() {
         client: selectedClient,
         vehicle: selectedVehicle,
         notes: notes,
-        status: 'draft'
+        status: currentStatus || 'draft' // Mantiene estado actual si existe
       };
 
       if (id) {
@@ -241,17 +233,71 @@ export default function EvaluationForm() {
         items: items.filter(i => i.description.trim() !== "")
       });
 
-      // ✅ LIMPIEZA DE SESIÓN
       sessionStorage.removeItem("tempEvaluationState");
       sessionStorage.removeItem("pendingExternalService");
 
-      alert("Guardado correctamente.");
-      navigate("/evaluations"); 
-    } catch (e) {
-      console.error(e);
+      if(e) {
+        alert("Guardado correctamente.");
+        navigate("/evaluations");
+      }
+      return evalId;
+    } catch (error) {
+      console.error(error);
       alert("Error al guardar.");
+      throw error;
     } finally {
       setLoading(false);
+    }
+  };
+
+  // 2. RECHAZAR ORDEN (NUEVA FUNCIÓN)
+  const handleReject = async () => {
+    if (!confirm("¿Estás seguro de que deseas RECHAZAR este presupuesto? La evaluación quedará cerrada.")) return;
+    
+    setProcessingAction(true);
+    try {
+      // Enviamos todos los datos pero con status 'rejected'
+      const payload = {
+        client: selectedClient,
+        vehicle: selectedVehicle,
+        notes: notes,
+        status: 'rejected'
+      };
+
+      // Primero actualizamos el estado general
+      await apiPut(`/evaluations/${id}/`, payload);
+      
+      alert("Presupuesto rechazado correctamente.");
+      navigate("/evaluations");
+    } catch (e) {
+      console.error(e);
+      alert("Error al rechazar el presupuesto.");
+    } finally {
+      setProcessingAction(false);
+    }
+  };
+
+  // 3. APROBAR Y GENERAR ORDEN
+  const handleApproveAndGenerate = async () => {
+    if (!confirm("¿Confirmas la aprobación del presupuesto y generación de Orden de Trabajo?")) return;
+
+    setProcessingAction(true);
+    try {
+      const evalId = await handleSubmit(null); // Guarda cambios primero
+      if (!evalId) throw new Error("No ID");
+
+      const res = await apiPost(`/evaluations/${evalId}/generate_order/`, {});
+      
+      alert(`¡Orden generada con éxito! (ID: ${res.order_id})`);
+      navigate("/orders"); 
+
+    } catch (error) {
+      console.error(error);
+      let msg = "Error al generar orden.";
+      try { msg = JSON.parse(error.message).error || msg; } catch(e) {}
+      alert(msg);
+    } finally {
+      setProcessingAction(false);
     }
   };
 
@@ -370,95 +416,46 @@ export default function EvaluationForm() {
               </div>
             </div>
 
-            {/* ZONA DE ACCIONES - DISEÑO EN 3 COLUMNAS */}
+            {/* ACCIONES DE AGREGADO */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              
-              {/* COLUMNA 1: Agregar Ítem Manual */}
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col justify-between h-full">
-                <div>
-                  <h3 className="text-xs font-bold text-slate-500 uppercase mb-3">Agregar Ítem Manual</h3>
-                  <p className="text-xs text-slate-400 mb-3 leading-relaxed">
-                    Agrega una línea vacía para escribir un diagnóstico libre.
-                  </p>
-                </div>
-                <button 
-                  onClick={handleAddManualItem}
-                  className="w-full py-2 bg-white hover:bg-slate-100 text-slate-700 text-sm font-medium border border-slate-300 rounded-lg transition-colors flex items-center justify-center gap-2"
-                >
-                  + Fila Vacía
-                </button>
+                <div><h3 className="text-xs font-bold text-slate-500 uppercase mb-3">Agregar Ítem Manual</h3></div>
+                <button onClick={handleAddManualItem} className="w-full py-2 bg-white hover:bg-slate-100 text-slate-700 text-sm font-medium border border-slate-300 rounded-lg transition-colors flex items-center justify-center gap-2">+ Fila Vacía</button>
               </div>
-
-              {/* COLUMNA 2: Servicios Externos */}
               <div className="bg-orange-50 border border-orange-100 rounded-xl p-4 flex flex-col justify-between h-full">
-                <div>
-                  <h3 className="text-xs font-bold text-orange-700 uppercase mb-3">Servicios Externos</h3>
-                  <p className="text-xs text-orange-600/80 mb-3 leading-relaxed">
-                    Contrata un servicio externo (Tornería, Pintura, etc.).
-                  </p>
-                </div>
-                <button 
-                  onClick={handleGoToExternal}
-                  className="w-full py-2 bg-orange-600 hover:bg-orange-700 text-white text-sm font-medium rounded-lg transition-colors shadow-sm flex items-center justify-center gap-2"
-                >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><path d="m15 3 6 6m0-6v6h-6"/></svg>
-                  Buscar Externo
-                </button>
+                <div><h3 className="text-xs font-bold text-orange-700 uppercase mb-3">Servicios Externos</h3></div>
+                <button onClick={handleGoToExternal} className="w-full py-2 bg-orange-600 hover:bg-orange-700 text-white text-sm font-medium rounded-lg transition-colors shadow-sm flex items-center justify-center gap-2">Buscar Externo</button>
               </div>
-
-              {/* COLUMNA 3: Repuestos Inventario */}
               <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 flex flex-col justify-between h-full">
                 <div>
                   <h3 className="text-xs font-bold text-indigo-700 uppercase mb-3">Repuesto de Inventario</h3>
                   <div className="flex gap-2 mb-2">
                     <div className="flex-1">
-                      <select 
-                        className="w-full border border-indigo-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
-                        value={selectedPartId}
-                        onChange={(e) => setSelectedPartId(e.target.value)}
-                      >
+                      <select className="w-full border border-indigo-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white" value={selectedPartId} onChange={(e) => setSelectedPartId(e.target.value)}>
                         <option value="">Seleccionar...</option>
-                        {inventory.filter(i => i.quantity > 0).map(i => (
-                          <option key={i.id} value={i.id}>{i.name} (${Number(i.price).toLocaleString('es-CL')})</option>
-                        ))}
+                        {inventory.filter(i => i.quantity > 0).map(i => <option key={i.id} value={i.id}>{i.name} (${Number(i.price).toLocaleString('es-CL')})</option>)}
                       </select>
                     </div>
                     <div className="w-16">
-                      <input 
-                        type="number" min="1" 
-                        className="w-full border border-indigo-200 rounded-lg px-1 py-2 text-sm text-center outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
-                        value={partQty}
-                        onChange={(e) => setPartQty(Number(e.target.value))}
-                      />
+                      <input type="number" min="1" className="w-full border border-indigo-200 rounded-lg px-1 py-2 text-sm text-center outline-none focus:ring-2 focus:ring-indigo-500 bg-white" value={partQty} onChange={(e) => setPartQty(Number(e.target.value))} />
                     </div>
                   </div>
                 </div>
-                <button 
-                  onClick={handleAddPartFromInventory}
-                  className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-colors shadow-sm"
-                >
-                  + Agregar
-                </button>
+                <button onClick={handleAddPartFromInventory} className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-colors shadow-sm">+ Agregar</button>
               </div>
             </div>
 
             {/* TOTALES */}
             <div className="mt-6 flex justify-end">
               <div className="bg-slate-50 rounded-xl p-5 w-full max-w-xs border border-slate-100">
-                <div className="flex justify-between text-sm text-slate-500 mb-2">
-                  <span>Total Estimado:</span>
-                  <span>${totalBudget.toLocaleString('es-CL')}</span>
-                </div>
+                <div className="flex justify-between text-sm text-slate-500 mb-2"><span>Total Estimado:</span><span>${totalBudget.toLocaleString('es-CL')}</span></div>
                 <div className="border-t border-slate-200 my-2"></div>
-                <div className="flex justify-between text-lg font-bold text-slate-900">
-                  <span>Total Aprobado:</span>
-                  <span className="text-emerald-600">${totalApproved.toLocaleString('es-CL')}</span>
-                </div>
+                <div className="flex justify-between text-lg font-bold text-slate-900"><span>Total Aprobado:</span><span className="text-emerald-600">${totalApproved.toLocaleString('es-CL')}</span></div>
               </div>
             </div>
           </div>
 
-          {/* 3. NOTAS Y GUARDAR */}
+          {/* 3. BOTONES FINALES */}
           <div className="p-6 border-t border-slate-100 bg-slate-50/30">
             <label className="block text-sm font-medium text-slate-700 mb-2">Observaciones Generales</label>
             <textarea 
@@ -467,13 +464,44 @@ export default function EvaluationForm() {
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Notas adicionales..."
             />
-            <div className="mt-6 flex justify-end gap-3">
+            
+            <div className="mt-6 flex justify-end gap-3 flex-wrap">
+              
+              {/* BOTONES DE ACCIÓN: Solo visibles si existe ID y no está cerrada */}
+              {id && currentStatus !== 'approved' && currentStatus !== 'rejected' && (
+                <>
+                  {/* 👇 BOTÓN RECHAZAR (NUEVO) */}
+                  <button
+                    onClick={handleReject}
+                    disabled={loading || processingAction}
+                    className="px-6 py-2.5 rounded-lg bg-white border border-red-200 text-red-600 font-semibold hover:bg-red-50 hover:border-red-300 disabled:opacity-50 transition-all"
+                  >
+                    {processingAction ? "Procesando..." : "Rechazar Orden"}
+                  </button>
+
+                  {/* BOTÓN APROBAR */}
+                  <button 
+                    onClick={handleApproveAndGenerate} 
+                    disabled={loading || processingAction}
+                    className="px-6 py-2.5 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-700 disabled:opacity-50 shadow-sm shadow-emerald-200 transition-all flex items-center gap-2"
+                  >
+                    {processingAction ? "Generando..." : (
+                      <>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        Aprobar y Generar Orden
+                      </>
+                    )}
+                  </button>
+                </>
+              )}
+
+              {/* BOTÓN GUARDAR (Siempre visible si no está procesando algo crítico) */}
               <button 
                 onClick={handleSubmit} 
-                disabled={loading}
+                disabled={loading || processingAction}
                 className="px-6 py-2.5 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700 disabled:opacity-50 shadow-sm shadow-indigo-200 transition-all"
               >
-                {loading ? "Guardando..." : (id ? "Guardar Cambios" : "Guardar Evaluación")}
+                {loading ? "Guardando..." : (id ? "Guardar Cambios" : "Guardar Borrador")}
               </button>
             </div>
           </div>

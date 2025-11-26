@@ -2,8 +2,7 @@
 import { useState, useEffect, Fragment } from "react";
 import { useNavigate } from "react-router-dom";
 import { Dialog, Transition } from "@headlessui/react";
-// 1. Importamos apiPost para poder llamar a la acción de generar orden
-import { apiGet, apiDelete, apiPost } from "../lib/api"; 
+import { apiGet, apiDelete } from "../lib/api"; // Quitamos apiPost
 import { PATHS } from "../routes/path";
 import AppNavbar from "../components/layout/AppNavbar";
 import AppDrawer from "../components/layout/AppDrawer";
@@ -45,9 +44,6 @@ export default function Evaluations() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
-  // Estado para evitar doble clic al generar orden
-  const [generating, setGenerating] = useState(false);
-
   // Estados para Modal de Eliminación
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [evalToDelete, setEvalToDelete] = useState(null);
@@ -84,35 +80,6 @@ export default function Evaluations() {
 
   const handleEdit = (id) => {
     navigate(`/evaluations/${id}`); 
-  };
-
-  // 👇 NUEVA FUNCIÓN: GENERAR ORDEN DE TRABAJO
-  const handleGenerateOrder = async (evalId) => {
-    if (!confirm("¿Deseas aprobar este presupuesto y generar la Orden de Trabajo?")) return;
-    
-    setGenerating(true);
-    try {
-      // Llamamos al endpoint personalizado del backend
-      const res = await apiPost(`/evaluations/${evalId}/generate_order/`, {});
-      
-      alert(`¡Orden de trabajo generada con éxito! (ID: ${res.order_id})`);
-      
-      // Recargamos la lista para que se actualice el estado (ej: de 'draft' a 'approved')
-      await loadEvaluations(); 
-
-    } catch (error) {
-      console.error(error);
-      let msg = "Error al generar orden.";
-      // Intentamos extraer el mensaje de error del backend si es un JSON válido
-      try { 
-        const parsed = JSON.parse(error.message);
-        msg = parsed.error || msg; 
-      } catch(e) {/* Ignorar error de parsing */}
-      
-      alert(msg);
-    } finally {
-      setGenerating(false);
-    }
   };
 
   const openDeleteModal = (ev) => {
@@ -232,24 +199,8 @@ export default function Evaluations() {
                         
                         <div className="flex justify-end gap-2">
                           
-                          {/* 👇 BOTÓN NUEVO: GENERAR ORDEN DE TRABAJO */}
-                          {/* Solo se muestra si no está rechazada (puedes ajustar la lógica si quieres) */}
-                          {ev.status !== 'rejected' && (
-                            <IconButton 
-                              onClick={() => handleGenerateOrder(ev.id)} 
-                              title={ev.status === 'approved' ? "Orden ya generada (Ver)" : "Aprobar y Generar Orden"}
-                              disabled={generating}
-                              className="text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50"
-                            >
-                              {/* Icono llave/herramienta */}
-                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 11-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 004.486-6.336l-3.276 3.277a3.004 3.004 0 01-2.25-2.25l3.276-3.276a4.5 4.5 0 00-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085m-1.745 1.437L5.909 7.5H4.5L2.25 3.75l1.5-1.5L7.5 4.5v1.409l4.26 4.26m-1.745 1.437l1.745-1.437m6.615 8.206L15.75 15.75M4.867 19.125h.008v.008h-.008v-.008z" />
-                              </svg>
-                            </IconButton>
-                          )}
-
-                          {/* Editar */}
-                          <IconButton onClick={() => handleEdit(ev.id)} title="Editar evaluación">
+                          {/* Editar (Ahora única vía para generar orden) */}
+                          <IconButton onClick={() => handleEdit(ev.id)} title="Ver detalle / Editar">
                             <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2">
                               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
                               <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />

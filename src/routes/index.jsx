@@ -18,6 +18,7 @@ const Evaluations = lazy(() => import("../pages/Evaluations"));
 const EvaluationForm = lazy(() => import("../pages/EvaluationForm"));
 const ExternalMarket = lazy(() => import("../externalizacion/ExternalMarket"));
 const OfferForm = lazy(() => import("../externalizacion/OfferForm"));
+const Orders = lazy(() => import("../pages/Orders"));
 
 
 
@@ -41,6 +42,7 @@ export default function AppRoutes() {
           <Route path={PATHS.external} element={<ExternalMarket />} />
           <Route path={PATHS.externalnew} element={<OfferForm />} />
           <Route path={PATHS.externalid} element={<OfferForm />} />
+          <Route path={PATHS.orders} element={<Orders />} />
         </Routes>
       </Suspense>
     </BrowserRouter>

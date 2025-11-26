@@ -5,9 +5,6 @@ export const PATHS = {
   dashboard: "/dashboard",
   pay: "/pay",
   inventory: "/inventory",
-  external: "/external",
-  externalnew: "/externalnew",
-  externalid: "/external/:id",
   team: "/team",
   clients: "/clients",
   clientDetail: "/clients/:id",
@@ -17,4 +14,5 @@ export const PATHS = {
   external: "/external",
   externalnew: "/external/new",
   externalid: "/external/:id",
+  orders: "/orders",
 };
