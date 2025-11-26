@@ -2,20 +2,22 @@
 import { useState, useEffect, Fragment } from "react";
 import { useNavigate } from "react-router-dom";
 import { Dialog, Transition } from "@headlessui/react";
-import { apiGet, apiDelete } from "../lib/api";
+// 1. Importamos apiPost para poder llamar a la acción de generar orden
+import { apiGet, apiDelete, apiPost } from "../lib/api"; 
 import { PATHS } from "../routes/path";
 import AppNavbar from "../components/layout/AppNavbar";
 import AppDrawer from "../components/layout/AppDrawer";
 import AppFooter from "../components/layout/AppFooter";
 
 // --- Componentes de Botones ---
-function IconButton({ onClick, children, title, className = "" }) {
+function IconButton({ onClick, children, title, className = "", disabled }) {
   return (
     <button
       type="button"
       onClick={onClick}
       title={title}
-      className={`p-2 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition-colors ${className}`}
+      disabled={disabled}
+      className={`p-2 rounded-lg hover:bg-slate-100 text-slate-500 hover:text-slate-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
     >
       {children}
     </button>
@@ -42,6 +44,9 @@ export default function Evaluations() {
   const [evaluations, setEvaluations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+
+  // Estado para evitar doble clic al generar orden
+  const [generating, setGenerating] = useState(false);
 
   // Estados para Modal de Eliminación
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -81,6 +86,35 @@ export default function Evaluations() {
     navigate(`/evaluations/${id}`); 
   };
 
+  // 👇 NUEVA FUNCIÓN: GENERAR ORDEN DE TRABAJO
+  const handleGenerateOrder = async (evalId) => {
+    if (!confirm("¿Deseas aprobar este presupuesto y generar la Orden de Trabajo?")) return;
+    
+    setGenerating(true);
+    try {
+      // Llamamos al endpoint personalizado del backend
+      const res = await apiPost(`/evaluations/${evalId}/generate_order/`, {});
+      
+      alert(`¡Orden de trabajo generada con éxito! (ID: ${res.order_id})`);
+      
+      // Recargamos la lista para que se actualice el estado (ej: de 'draft' a 'approved')
+      await loadEvaluations(); 
+
+    } catch (error) {
+      console.error(error);
+      let msg = "Error al generar orden.";
+      // Intentamos extraer el mensaje de error del backend si es un JSON válido
+      try { 
+        const parsed = JSON.parse(error.message);
+        msg = parsed.error || msg; 
+      } catch(e) {/* Ignorar error de parsing */}
+      
+      alert(msg);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   const openDeleteModal = (ev) => {
     setEvalToDelete(ev);
     setIsDeleteModalOpen(true);
@@ -109,9 +143,18 @@ export default function Evaluations() {
     return ev.items.reduce((sum, item) => sum + Number(item.price || 0), 0);
   };
 
+  // Helper para mostrar estado bonito
+  const getStatusBadge = (status) => {
+    switch(status) {
+      case 'approved': return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Aprobado</span>;
+      case 'sent': return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">Enviado</span>;
+      case 'rejected': return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Rechazado</span>;
+      default: return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-800">Borrador</span>;
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
-      {/* 🟢 CORRECCIÓN AQUÍ: Se agregó la propiedad onLogout */}
       <AppNavbar 
         title="Evaluaciones" 
         onOpenDrawer={() => setDrawerOpen(true)} 
@@ -158,22 +201,24 @@ export default function Evaluations() {
                 <tr>
                   <th className="px-6 py-4 font-medium"># ID</th>
                   <th className="px-6 py-4 font-medium">Fecha</th>
+                  <th className="px-6 py-4 font-medium">Estado</th>
                   <th className="px-6 py-4 font-medium">Cliente</th>
                   <th className="px-6 py-4 font-medium">Vehículo</th>
-                  <th className="px-6 py-4 font-medium">Total Estimado</th>
+                  <th className="px-6 py-4 font-medium">Total</th>
                   <th className="px-6 py-4 font-medium text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
-                  <tr><td colSpan="6" className="px-6 py-8 text-center text-slate-500">Cargando...</td></tr>
+                  <tr><td colSpan="7" className="px-6 py-8 text-center text-slate-500">Cargando...</td></tr>
                 ) : filtered.length === 0 ? (
-                  <tr><td colSpan="6" className="px-6 py-8 text-center text-slate-500">No hay evaluaciones registradas.</td></tr>
+                  <tr><td colSpan="7" className="px-6 py-8 text-center text-slate-500">No hay evaluaciones registradas.</td></tr>
                 ) : (
                   filtered.map((ev) => (
                     <tr key={ev.id} className="hover:bg-slate-50 transition-colors group">
                       <td className="px-6 py-4 font-mono text-slate-600">#{ev.id}</td>
                       <td className="px-6 py-4 text-slate-600">{formatDate(ev.created_at)}</td>
+                      <td className="px-6 py-4">{getStatusBadge(ev.status)}</td>
                       <td className="px-6 py-4 font-medium text-slate-900">
                         {ev.client_data ? `${ev.client_data.first_name} ${ev.client_data.last_name}` : "—"}
                       </td>
@@ -187,6 +232,22 @@ export default function Evaluations() {
                         
                         <div className="flex justify-end gap-2">
                           
+                          {/* 👇 BOTÓN NUEVO: GENERAR ORDEN DE TRABAJO */}
+                          {/* Solo se muestra si no está rechazada (puedes ajustar la lógica si quieres) */}
+                          {ev.status !== 'rejected' && (
+                            <IconButton 
+                              onClick={() => handleGenerateOrder(ev.id)} 
+                              title={ev.status === 'approved' ? "Orden ya generada (Ver)" : "Aprobar y Generar Orden"}
+                              disabled={generating}
+                              className="text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50"
+                            >
+                              {/* Icono llave/herramienta */}
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M11.42 15.17L17.25 21A2.652 2.652 0 0021 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 11-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 004.486-6.336l-3.276 3.277a3.004 3.004 0 01-2.25-2.25l3.276-3.276a4.5 4.5 0 00-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085m-1.745 1.437L5.909 7.5H4.5L2.25 3.75l1.5-1.5L7.5 4.5v1.409l4.26 4.26m-1.745 1.437l1.745-1.437m6.615 8.206L15.75 15.75M4.867 19.125h.008v.008h-.008v-.008z" />
+                              </svg>
+                            </IconButton>
+                          )}
+
                           {/* Editar */}
                           <IconButton onClick={() => handleEdit(ev.id)} title="Editar evaluación">
                             <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2">
