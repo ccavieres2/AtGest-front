@@ -14,4 +14,7 @@ export const PATHS = {
   evaluations: "/evaluations",
   evaluationNew: "/evaluations/new", 
   evaluationDetail: "/evaluations/:id", 
+  external: "/external",
+  externalnew: "/external/new",
+  externalid: "/external/:id",
 };

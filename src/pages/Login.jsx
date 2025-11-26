@@ -32,15 +32,21 @@ export default function Login() {
 
     setLoading(true);
     try {
+      // 1. Hacemos login para obtener tokens
       const resp = await apiPost("/auth/login/", form);
+      
+      // 2. Guardamos tokens y rol inicial
       localStorage.setItem("access", resp.access);
       localStorage.setItem("refresh", resp.refresh);
-      
-      // 👇 IMPORTANTE: Guardamos el rol para usarlo en los menús
       localStorage.setItem("role", resp.role); 
 
-      // Verificamos el usuario autenticado
+      // 3. Obtenemos datos del usuario actual (ID, nombre, etc.)
       const me = await apiGet("/auth/me/");
+      
+      // 👇 IMPORTANTE: Guardamos el ID del usuario. 
+      // Esto es lo que usa ExternalMarket para saber si la tarjeta es tuya.
+      localStorage.setItem("userId", me.id); 
+
       setOkMsg(`¡Bienvenido, ${me.username}!`);
 
       setTimeout(() => {
@@ -49,7 +55,6 @@ export default function Login() {
     } catch (err) {
       console.error("Error en login:", err.message);
 
-      // 🧠 Manejo de errores diferenciado
       if (err.message.includes("No active account") || err.message.includes("credentials")) {
         setErrMsg("Correo o contraseña incorrectos.");
       } else if (err.message.includes("Unauthorized") || err.message.includes("401")) {

@@ -1,6 +1,6 @@
 // src/pages/EvaluationForm.jsx
 import { useState, useEffect } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { apiGet, apiPost, apiPut } from "../lib/api";
 import AppNavbar from "../components/layout/AppNavbar";
 import AppDrawer from "../components/layout/AppDrawer";
@@ -8,7 +8,8 @@ import AppFooter from "../components/layout/AppFooter";
 
 export default function EvaluationForm() {
   const navigate = useNavigate();
-  const { id } = useParams(); // Si hay ID, estamos editando
+  const { id } = useParams(); 
+  const location = useLocation(); 
   const [drawerOpen, setDrawerOpen] = useState(false);
   
   // --- ESTADOS DE DATOS ---
@@ -22,20 +23,18 @@ export default function EvaluationForm() {
   const [selectedVehicle, setSelectedVehicle] = useState("");
   const [notes, setNotes] = useState("");
   
-  // Lista unificada
-  // NOTA: Agregamos campos extra (inventoryId, qty, unitPrice) para lógica interna del front
   const [items, setItems] = useState([
     { description: "", price: 0, is_approved: true }
   ]);
 
-  // Estados para el selector de repuestos
+  // Selectores locales
   const [selectedPartId, setSelectedPartId] = useState("");
   const [partQty, setPartQty] = useState(1);
 
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(!!id);
 
-  // 1. Cargar Datos Iniciales
+  // 1. Cargar Datos Maestros
   useEffect(() => {
     const loadInitialData = async () => {
       try {
@@ -44,7 +43,6 @@ export default function EvaluationForm() {
           apiGet("/evaluations/"),
           apiGet("/inventory/")
         ]);
-        
         setClients(clientsData);
         setInventory(inventoryData);
 
@@ -63,17 +61,65 @@ export default function EvaluationForm() {
     loadInitialData();
   }, [id]);
 
-  // 2. Cargar datos si es EDICIÓN
+  // 2. LÓGICA DE RESTAURACIÓN Y CARGA DE DATOS
   useEffect(() => {
-    if (id) {
-      setLoadingData(true);
-      apiGet(`/evaluations/${id}/`)
-        .then(async (data) => {
+    const loadOrRestore = async () => {
+      // A) Intentar leer datos de sesión (si volvemos de Externalización)
+      const pendingServiceStr = sessionStorage.getItem("pendingExternalService");
+      const savedStateStr = sessionStorage.getItem("tempEvaluationState");
+
+      if (savedStateStr) {
+        console.log("Restaurando estado desde sesión...");
+        const savedState = JSON.parse(savedStateStr);
+        
+        // Restaurar campos básicos
+        setSelectedClient(savedState.client);
+        setSelectedVehicle(savedState.vehicle);
+        setNotes(savedState.notes);
+        
+        // Recuperar lista previa de items
+        let currentItems = savedState.items || [];
+
+        // SI HAY UN SERVICIO PENDIENTE DE AGREGAR
+        if (pendingServiceStr) {
+          const service = JSON.parse(pendingServiceStr);
+          
+          // Evitar duplicados: verificamos si el último ítem es el mismo
+          const isDuplicate = currentItems.length > 0 && 
+                              currentItems[currentItems.length - 1].externalId === service.id;
+
+          if (!isDuplicate) {
+            const newItem = {
+              description: `[EXTERNO] ${service.name} - ${service.provider_name}`,
+              price: Number(service.cost),
+              is_approved: true,
+              externalId: service.id
+            };
+            currentItems = [...currentItems, newItem];
+          }
+        }
+
+        setItems(currentItems);
+
+        // Cargar vehículos del cliente restaurado para que el select funcione
+        if (savedState.client) {
+          try {
+            const clientData = await apiGet(`/clients/${savedState.client}/`);
+            setVehicles(clientData.vehicles || []);
+          } catch (e) { console.error("Error cargando vehículos al restaurar", e); }
+        }
+        
+        setLoadingData(false);
+        return; 
+      }
+
+      // B) Si no hay estado temporal, cargamos normal del backend (si es edición)
+      if (id) {
+        setLoadingData(true);
+        try {
+          const data = await apiGet(`/evaluations/${id}/`);
           setSelectedClient(data.client);
           setNotes(data.notes);
-          
-          // Al cargar del backend, no tenemos el ID del inventario ni la cantidad desglosada.
-          // Se cargan como ítems simples.
           setItems(data.items || []);
           
           if (data.client) {
@@ -81,16 +127,33 @@ export default function EvaluationForm() {
             setVehicles(clientData.vehicles || []);
             setSelectedVehicle(data.vehicle); 
           }
-        })
-        .catch(() => {
-          alert("Error al cargar.");
+        } catch (e) {
+          console.error(e);
+          alert("Error al cargar la evaluación.");
           navigate("/evaluations");
-        })
-        .finally(() => setLoadingData(false));
-    }
+        } finally {
+          setLoadingData(false);
+        }
+      }
+    };
+
+    loadOrRestore();
   }, [id, navigate]);
 
-  // Manejo cambio de cliente
+  // --- NAVEGACIÓN A EXTERNALIZACIÓN ---
+  const handleGoToExternal = () => {
+    const stateToSave = {
+      client: selectedClient,
+      vehicle: selectedVehicle,
+      notes: notes,
+      items: items
+    };
+    sessionStorage.setItem("tempEvaluationState", JSON.stringify(stateToSave));
+    const returnPath = location.pathname; 
+    navigate(`/external?selectMode=true&returnUrl=${encodeURIComponent(returnPath)}`);
+  };
+
+  // --- MANEJADORES DE CAMBIOS ---
   const handleClientChange = (clientId) => {
     setSelectedClient(clientId);
     setSelectedVehicle(""); 
@@ -105,67 +168,46 @@ export default function EvaluationForm() {
     }
   };
 
-  // Filtro Clientes Disponibles
   const availableClients = clients.filter(client => {
-    // Si estamos editando, siempre mostrar el cliente actual (aunque sus autos estén ocupados)
     if (id && client.id === Number(selectedClient)) return true;
-
     if (!client.vehicles || client.vehicles.length === 0) return false;
     return client.vehicles.some(v => !busyVehicleIds.has(v.id));
   });
 
-  // --- LÓGICA DEL CHECKLIST ---
   const handleAddManualItem = () => {
     setItems([...items, { description: "", price: 0, is_approved: true }]);
   };
 
-  // ⬇️⬇️ LÓGICA CORREGIDA: AGREGAR O SUMAR REPUESTO ⬇️⬇️
   const handleAddPartFromInventory = () => {
     if (!selectedPartId) return alert("Selecciona un repuesto.");
     if (partQty < 1) return alert("La cantidad debe ser al menos 1.");
-
     const part = inventory.find(p => p.id === Number(selectedPartId));
     if (!part) return;
 
-    // Buscamos si este repuesto ya está en la lista actual (por inventoryId)
     const existingIndex = items.findIndex(item => item.inventoryId === part.id);
-
     if (existingIndex >= 0) {
-      // --- CASO 1: YA EXISTE, SUMAR CANTIDAD ---
       const newItems = [...items];
       const itemToUpdate = newItems[existingIndex];
-
-      // Calculamos nueva cantidad
-      const currentQty = itemToUpdate.qty || 1; // Si viene de DB podría no tener qty, asumimos 1 o lo reiniciamos
-      const newQty = currentQty + partQty;
-
-      // Actualizamos datos
+      const newQty = (itemToUpdate.qty || 1) + partQty;
       itemToUpdate.qty = newQty;
-      itemToUpdate.unitPrice = Number(part.price); // Aseguramos precio actualizado
-      itemToUpdate.price = Number(part.price) * newQty; // Precio total = Unitario * Cantidad Total
-      itemToUpdate.description = `[REPUESTO] ${part.name} (x${newQty})`; // Actualizamos texto
-
+      itemToUpdate.unitPrice = Number(part.price);
+      itemToUpdate.price = Number(part.price) * newQty;
+      itemToUpdate.description = `[REPUESTO] ${part.name} (x${newQty})`;
       setItems(newItems);
-
     } else {
-      // --- CASO 2: NO EXISTE, CREAR NUEVO ---
       const newItem = {
         description: `[REPUESTO] ${part.name} (x${partQty})`, 
         price: Number(part.price) * partQty, 
         is_approved: true,
-        // Guardamos metadatos ocultos para la lógica del frontend
         inventoryId: part.id,
         qty: partQty,
         unitPrice: Number(part.price)
       };
       setItems([...items, newItem]);
     }
-
-    // Resetear inputs
     setSelectedPartId("");
     setPartQty(1);
   };
-  // ⬆️⬆️ FIN LÓGICA CORREGIDA ⬆️⬆️
 
   const handleRemoveItem = (index) => setItems(items.filter((_, i) => i !== index));
   
@@ -175,13 +217,7 @@ export default function EvaluationForm() {
     setItems(newItems);
   };
 
-  // Totales
-  const totalBudget = items.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
-  const totalApproved = items
-    .filter(i => i.is_approved)
-    .reduce((sum, item) => sum + (Number(item.price) || 0), 0);
-
-  // Guardar
+  // --- GUARDAR ---
   const handleSubmit = async () => {
     if (!selectedClient || !selectedVehicle) return alert("Faltan datos del vehículo");
     setLoading(true);
@@ -200,11 +236,14 @@ export default function EvaluationForm() {
         const res = await apiPost("/evaluations/", payload);
         evalId = res.id;
       }
-
-      // Enviamos los items (el backend ignorará inventoryId, qty, unitPrice automáticamente)
+      
       await apiPost(`/evaluations/${evalId}/update_items/`, {
         items: items.filter(i => i.description.trim() !== "")
       });
+
+      // ✅ LIMPIEZA DE SESIÓN
+      sessionStorage.removeItem("tempEvaluationState");
+      sessionStorage.removeItem("pendingExternalService");
 
       alert("Guardado correctamente.");
       navigate("/evaluations"); 
@@ -216,11 +255,13 @@ export default function EvaluationForm() {
     }
   };
 
+  const totalBudget = items.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
+  const totalApproved = items.filter(i => i.is_approved).reduce((sum, item) => sum + (Number(item.price) || 0), 0);
+
   if (loadingData) return <div className="min-h-screen flex items-center justify-center text-slate-500">Cargando...</div>;
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
-      {/* 🟢 AQUÍ ESTÁ EL CAMBIO: Se agregó onLogout */}
       <AppNavbar 
         title={id ? "Editar Evaluación" : "Nueva Evaluación"} 
         onOpenDrawer={() => setDrawerOpen(true)}
@@ -236,14 +277,14 @@ export default function EvaluationForm() {
 
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           
-          {/* 1. DATOS VEHÍCULO (Bloqueados si hay ID) */}
+          {/* 1. DATOS VEHÍCULO */}
           <div className="p-6 border-b border-slate-100 bg-slate-50/30">
             <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wide mb-4">1. Datos del Vehículo</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase">Cliente</label>
                 <select 
-                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100 disabled:text-slate-500"
+                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100"
                   value={selectedClient}
                   onChange={(e) => handleClientChange(e.target.value)}
                   disabled={!!id} 
@@ -255,7 +296,7 @@ export default function EvaluationForm() {
               <div>
                 <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase">Vehículo</label>
                 <select 
-                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100 disabled:text-slate-500"
+                  className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100"
                   value={selectedVehicle}
                   onChange={(e) => setSelectedVehicle(e.target.value)}
                   disabled={!selectedClient || !!id}
@@ -284,12 +325,10 @@ export default function EvaluationForm() {
                 <div className="w-32 text-right pr-4">Costo Total</div>
                 <div className="w-8"></div>
               </div>
-
+              
               <div className="divide-y divide-slate-100 bg-white">
                 {items.map((item, index) => {
-                  // 🟢 DETECTAR SI ES UN REPUESTO
-                  const isSparePart = item.description.startsWith('[REPUESTO]');
-                  
+                  const isLocked = item.description.startsWith('[REPUESTO]') || item.description.startsWith('[EXTERNO]');
                   return (
                     <div key={index} className="flex items-center px-4 py-3 hover:bg-slate-50 transition-colors group">
                       <div className="w-8 text-center text-slate-400 font-mono text-sm">{index + 1}</div>
@@ -304,13 +343,8 @@ export default function EvaluationForm() {
                       <div className="flex-1 pl-4">
                         <input 
                           type="text" 
-                          // 🟢 LOGICA DE BLOQUEO: Si empieza con [REPUESTO], es ReadOnly
-                          readOnly={isSparePart}
-                          className={`w-full border-none p-1 text-sm focus:ring-0 placeholder:text-slate-400 rounded 
-                            ${isSparePart 
-                              ? 'text-indigo-700 font-semibold bg-indigo-50 cursor-not-allowed' 
-                              : 'text-slate-700 bg-transparent'
-                            }`}
+                          readOnly={isLocked}
+                          className={`w-full border-none p-1 text-sm focus:ring-0 placeholder:text-slate-400 rounded ${isLocked ? 'text-indigo-700 font-semibold bg-indigo-50 cursor-not-allowed' : 'text-slate-700 bg-transparent'}`}
                           value={item.description}
                           onChange={(e) => handleItemChange(index, 'description', e.target.value)}
                           placeholder="Descripción..."
@@ -336,53 +370,74 @@ export default function EvaluationForm() {
               </div>
             </div>
 
-            {/* ZONA DE ACCIONES */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-                <h3 className="text-xs font-bold text-slate-500 uppercase mb-3">Agregar Ítem Manual</h3>
+            {/* ZONA DE ACCIONES - DISEÑO EN 3 COLUMNAS */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              
+              {/* COLUMNA 1: Agregar Ítem Manual */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col justify-between h-full">
+                <div>
+                  <h3 className="text-xs font-bold text-slate-500 uppercase mb-3">Agregar Ítem Manual</h3>
+                  <p className="text-xs text-slate-400 mb-3 leading-relaxed">
+                    Agrega una línea vacía para escribir un diagnóstico libre.
+                  </p>
+                </div>
                 <button 
                   onClick={handleAddManualItem}
                   className="w-full py-2 bg-white hover:bg-slate-100 text-slate-700 text-sm font-medium border border-slate-300 rounded-lg transition-colors flex items-center justify-center gap-2"
                 >
-                  <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-slate-400"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" /></svg>
-                  Agregar Fila Vacía
+                  + Fila Vacía
                 </button>
               </div>
 
-              <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4">
-                <h3 className="text-xs font-bold text-indigo-700 uppercase mb-3">Agregar Repuesto del Inventario</h3>
-                <div className="flex gap-2 mb-2">
-                  <div className="flex-1">
-                    <select 
-                      className="w-full border border-indigo-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-                      value={selectedPartId}
-                      onChange={(e) => setSelectedPartId(e.target.value)}
-                    >
-                      <option value="">Seleccionar repuesto...</option>
-                      {inventory
-                        .filter(i => i.quantity > 0)
-                        .map(i => (
-                          <option key={i.id} value={i.id}>
-                            {i.name} (${Number(i.price).toLocaleString('es-CL')}) - Stock: {i.quantity}
-                          </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="w-20">
-                    <input 
-                      type="number" 
-                      min="1" 
-                      className="w-full border border-indigo-200 rounded-lg px-2 py-2 text-sm text-center outline-none focus:ring-2 focus:ring-indigo-500"
-                      value={partQty}
-                      onChange={(e) => setPartQty(Number(e.target.value))}
-                    />
+              {/* COLUMNA 2: Servicios Externos */}
+              <div className="bg-orange-50 border border-orange-100 rounded-xl p-4 flex flex-col justify-between h-full">
+                <div>
+                  <h3 className="text-xs font-bold text-orange-700 uppercase mb-3">Servicios Externos</h3>
+                  <p className="text-xs text-orange-600/80 mb-3 leading-relaxed">
+                    Contrata un servicio externo (Tornería, Pintura, etc.).
+                  </p>
+                </div>
+                <button 
+                  onClick={handleGoToExternal}
+                  className="w-full py-2 bg-orange-600 hover:bg-orange-700 text-white text-sm font-medium rounded-lg transition-colors shadow-sm flex items-center justify-center gap-2"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><path d="m15 3 6 6m0-6v6h-6"/></svg>
+                  Buscar Externo
+                </button>
+              </div>
+
+              {/* COLUMNA 3: Repuestos Inventario */}
+              <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 flex flex-col justify-between h-full">
+                <div>
+                  <h3 className="text-xs font-bold text-indigo-700 uppercase mb-3">Repuesto de Inventario</h3>
+                  <div className="flex gap-2 mb-2">
+                    <div className="flex-1">
+                      <select 
+                        className="w-full border border-indigo-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                        value={selectedPartId}
+                        onChange={(e) => setSelectedPartId(e.target.value)}
+                      >
+                        <option value="">Seleccionar...</option>
+                        {inventory.filter(i => i.quantity > 0).map(i => (
+                          <option key={i.id} value={i.id}>{i.name} (${Number(i.price).toLocaleString('es-CL')})</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="w-16">
+                      <input 
+                        type="number" min="1" 
+                        className="w-full border border-indigo-200 rounded-lg px-1 py-2 text-sm text-center outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                        value={partQty}
+                        onChange={(e) => setPartQty(Number(e.target.value))}
+                      />
+                    </div>
                   </div>
                 </div>
                 <button 
                   onClick={handleAddPartFromInventory}
                   className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-colors shadow-sm"
                 >
-                  + Agregar Repuesto
+                  + Agregar
                 </button>
               </div>
             </div>
@@ -412,7 +467,6 @@ export default function EvaluationForm() {
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Notas adicionales..."
             />
-
             <div className="mt-6 flex justify-end gap-3">
               <button 
                 onClick={handleSubmit} 
