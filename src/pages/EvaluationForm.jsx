@@ -5,6 +5,8 @@ import { apiGet, apiPost, apiPut } from "../lib/api";
 import AppNavbar from "../components/layout/AppNavbar";
 import AppDrawer from "../components/layout/AppDrawer";
 import AppFooter from "../components/layout/AppFooter";
+// 👇 IMPORTAR EL GENERADOR DE PDF
+import { generateEvaluationPDF } from "../lib/pdfGenerator";
 
 export default function EvaluationForm() {
   const navigate = useNavigate();
@@ -23,11 +25,12 @@ export default function EvaluationForm() {
   const [selectedVehicle, setSelectedVehicle] = useState("");
   const [notes, setNotes] = useState("");
   
-  // Estado para saber si ya está aprobada/rechazada y ocultar botones
+  // Estado para saber si ya está aprobada/rechazada
   const [currentStatus, setCurrentStatus] = useState(""); 
   
+  // Ítem de Diagnóstico por defecto (inmutable visualmente)
   const [items, setItems] = useState([
-    { description: "", price: 0, is_approved: true }
+    { description: "Costo de Revisión / Diagnóstico", price: 0, is_approved: true }
   ]);
 
   // Selectores locales
@@ -36,9 +39,9 @@ export default function EvaluationForm() {
 
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(!!id);
-  const [processingAction, setProcessingAction] = useState(false); // Para deshabilitar botones al actuar
+  const [processingAction, setProcessingAction] = useState(false);
 
-  // 1. Cargar Datos Maestros
+  // 1. Cargar Datos Maestros y Calcular Vehículos Ocupados
   useEffect(() => {
     const loadInitialData = async () => {
       try {
@@ -50,12 +53,14 @@ export default function EvaluationForm() {
         setClients(clientsData);
         setInventory(inventoryData);
 
+        // Filtrar vehículos ocupados
         const busyIds = evalsData
           .filter(ev => {
-            if (id && ev.id === Number(id)) return false;
+            if (id && Number(ev.id) === Number(id)) return false;
             return ev.status !== 'rejected'; 
           })
-          .map(ev => ev.vehicle);
+          .map(ev => Number(ev.vehicle)); 
+
         setBusyVehicleIds(new Set(busyIds));
 
       } catch (error) {
@@ -75,10 +80,13 @@ export default function EvaluationForm() {
         console.log("Restaurando estado desde sesión...");
         const savedState = JSON.parse(savedStateStr);
         setSelectedClient(savedState.client);
-        setSelectedVehicle(savedState.vehicle);
+        
         setNotes(savedState.notes);
         
         let currentItems = savedState.items || [];
+        if (currentItems.length === 0) {
+             currentItems = [{ description: "Costo de Revisión / Diagnóstico", price: 0, is_approved: true }];
+        }
 
         if (pendingServiceStr) {
           const service = JSON.parse(pendingServiceStr);
@@ -101,6 +109,7 @@ export default function EvaluationForm() {
           try {
             const clientData = await apiGet(`/clients/${savedState.client}/`);
             setVehicles(clientData.vehicles || []);
+            setSelectedVehicle(savedState.vehicle); 
           } catch (e) { console.error("Error cargando vehículos al restaurar", e); }
         }
         setLoadingData(false);
@@ -114,7 +123,7 @@ export default function EvaluationForm() {
           setSelectedClient(data.client);
           setNotes(data.notes);
           setItems(data.items || []);
-          setCurrentStatus(data.status); // Guardamos el estado actual
+          setCurrentStatus(data.status);
           
           if (data.client) {
             const clientData = await apiGet(`/clients/${data.client}/`);
@@ -156,10 +165,12 @@ export default function EvaluationForm() {
     }
   };
 
+  // Filtro de clientes disponibles
   const availableClients = clients.filter(client => {
-    if (id && client.id === Number(selectedClient)) return true;
+    if (id && Number(client.id) === Number(selectedClient)) return true;
     if (!client.vehicles || client.vehicles.length === 0) return false;
-    return client.vehicles.some(v => !busyVehicleIds.has(v.id));
+    const hasFreeVehicle = client.vehicles.some(v => !busyVehicleIds.has(Number(v.id)));
+    return hasFreeVehicle;
   });
 
   const handleAddManualItem = () => {
@@ -197,7 +208,10 @@ export default function EvaluationForm() {
     setPartQty(1);
   };
 
-  const handleRemoveItem = (index) => setItems(items.filter((_, i) => i !== index));
+  const handleRemoveItem = (index) => {
+    if (index === 0) return; 
+    setItems(items.filter((_, i) => i !== index));
+  };
   
   const handleItemChange = (index, field, value) => {
     const newItems = [...items];
@@ -205,9 +219,27 @@ export default function EvaluationForm() {
     setItems(newItems);
   };
 
-  // --- ACCIONES PRINCIPALES ---
+  // --- CÁLCULOS DE TOTALES ---
+  const totalBudget = items.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
+  const totalApproved = items.filter(i => i.is_approved).reduce((sum, item) => sum + (Number(item.price) || 0), 0);
 
-  // 1. GUARDAR (Borrador o Actualizar)
+  // 👇 NUEVA FUNCIÓN: GENERAR PDF 👇
+  const handlePrint = () => {
+    const clientObj = clients.find(c => c.id === Number(selectedClient));
+    const vehicleObj = vehicles.find(v => v.id === Number(selectedVehicle));
+
+    generateEvaluationPDF({
+      id: id || "Borrador",
+      client: clientObj,
+      vehicle: vehicleObj,
+      items: items,
+      totalBudget: totalBudget,
+      totalApproved: totalApproved,
+      notes: notes
+    });
+  };
+
+  // --- ACCIONES PRINCIPALES ---
   const handleSubmit = async (e) => {
     if(e) e.preventDefault();
     if (!selectedClient || !selectedVehicle) return alert("Faltan datos del vehículo");
@@ -219,7 +251,7 @@ export default function EvaluationForm() {
         client: selectedClient,
         vehicle: selectedVehicle,
         notes: notes,
-        status: currentStatus || 'draft' // Mantiene estado actual si existe
+        status: currentStatus || 'draft'
       };
 
       if (id) {
@@ -230,7 +262,7 @@ export default function EvaluationForm() {
       }
       
       await apiPost(`/evaluations/${evalId}/update_items/`, {
-        items: items.filter(i => i.description.trim() !== "")
+        items: items.filter((i, idx) => idx === 0 || i.description.trim() !== "")
       });
 
       sessionStorage.removeItem("tempEvaluationState");
@@ -243,30 +275,23 @@ export default function EvaluationForm() {
       return evalId;
     } catch (error) {
       console.error(error);
-      alert("Error al guardar.");
+      if (error.message && error.message.includes("Este vehículo ya tiene una evaluación")) {
+        alert("Error: Este vehículo ya tiene una evaluación activa.");
+      } else {
+        alert("Error al guardar.");
+      }
       throw error;
     } finally {
       setLoading(false);
     }
   };
 
-  // 2. RECHAZAR ORDEN (NUEVA FUNCIÓN)
   const handleReject = async () => {
     if (!confirm("¿Estás seguro de que deseas RECHAZAR este presupuesto? La evaluación quedará cerrada.")) return;
-    
     setProcessingAction(true);
     try {
-      // Enviamos todos los datos pero con status 'rejected'
-      const payload = {
-        client: selectedClient,
-        vehicle: selectedVehicle,
-        notes: notes,
-        status: 'rejected'
-      };
-
-      // Primero actualizamos el estado general
+      const payload = { client: selectedClient, vehicle: selectedVehicle, notes: notes, status: 'rejected' };
       await apiPut(`/evaluations/${id}/`, payload);
-      
       alert("Presupuesto rechazado correctamente.");
       navigate("/evaluations");
     } catch (e) {
@@ -277,20 +302,15 @@ export default function EvaluationForm() {
     }
   };
 
-  // 3. APROBAR Y GENERAR ORDEN
   const handleApproveAndGenerate = async () => {
     if (!confirm("¿Confirmas la aprobación del presupuesto y generación de Orden de Trabajo?")) return;
-
     setProcessingAction(true);
     try {
-      const evalId = await handleSubmit(null); // Guarda cambios primero
+      const evalId = await handleSubmit(null);
       if (!evalId) throw new Error("No ID");
-
       const res = await apiPost(`/evaluations/${evalId}/generate_order/`, {});
-      
       alert(`¡Orden generada con éxito! (ID: ${res.order_id})`);
       navigate("/orders"); 
-
     } catch (error) {
       console.error(error);
       let msg = "Error al generar orden.";
@@ -300,9 +320,6 @@ export default function EvaluationForm() {
       setProcessingAction(false);
     }
   };
-
-  const totalBudget = items.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
-  const totalApproved = items.filter(i => i.is_approved).reduce((sum, item) => sum + (Number(item.price) || 0), 0);
 
   if (loadingData) return <div className="min-h-screen flex items-center justify-center text-slate-500">Cargando...</div>;
 
@@ -316,8 +333,26 @@ export default function EvaluationForm() {
       <AppDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
 
       <main className="flex-1 mx-auto max-w-5xl w-full px-4 py-8">
+        
+        {/* CABECERA CON TÍTULO Y BOTÓN DE IMPRIMIR */}
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold text-slate-900">{id ? `Editando #${id}` : "Crear Diagnóstico"}</h1>
+          <div className="flex items-center gap-4">
+            <h1 className="text-2xl font-bold text-slate-900">{id ? `Editando #${id}` : "Crear Diagnóstico"}</h1>
+            
+            {/* 👇 BOTÓN IMPRIMIR INTEGRADO 👇 */}
+            <button 
+              onClick={handlePrint}
+              type="button"
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-800 text-white text-xs font-bold hover:bg-slate-900 transition-colors shadow-sm"
+              title="Descargar Presupuesto PDF"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.198-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18 10.5h.008v.008H18V10.5zm-3 0h.008v.008H15V10.5z" />
+              </svg>
+              Imprimir
+            </button>
+          </div>
+
           <button onClick={() => navigate("/evaluations")} className="text-sm text-slate-500 hover:text-indigo-600 font-medium">Cancelar</button>
         </div>
 
@@ -349,7 +384,9 @@ export default function EvaluationForm() {
                 >
                   <option value="">-- Seleccionar --</option>
                   {vehicles
-                    .filter(v => v.id === selectedVehicle || !busyVehicleIds.has(v.id))
+                    .filter(v => {
+                        return Number(v.id) === Number(selectedVehicle) || !busyVehicleIds.has(Number(v.id));
+                    })
                     .map(v => <option key={v.id} value={v.id}>{v.brand} {v.model} ({v.plate})</option>)
                   }
                 </select>
@@ -374,10 +411,15 @@ export default function EvaluationForm() {
               
               <div className="divide-y divide-slate-100 bg-white">
                 {items.map((item, index) => {
-                  const isLocked = item.description.startsWith('[REPUESTO]') || item.description.startsWith('[EXTERNO]');
+                  const isDiagnosis = index === 0;
+                  const isRepoOrExt = item.description.startsWith('[REPUESTO]') || item.description.startsWith('[EXTERNO]');
+                  const isDescLocked = isDiagnosis || isRepoOrExt;
+
                   return (
-                    <div key={index} className="flex items-center px-4 py-3 hover:bg-slate-50 transition-colors group">
-                      <div className="w-8 text-center text-slate-400 font-mono text-sm">{index + 1}</div>
+                    <div key={index} className={`flex items-center px-4 py-3 transition-colors group ${isDiagnosis ? 'bg-indigo-50/40' : 'hover:bg-slate-50'}`}>
+                      <div className="w-8 text-center text-slate-400 font-mono text-sm">
+                        {isDiagnosis ? <span className="text-indigo-600 font-bold">★</span> : index + 1}
+                      </div>
                       <div className="w-10 flex justify-center">
                         <input 
                           type="checkbox"
@@ -389,8 +431,12 @@ export default function EvaluationForm() {
                       <div className="flex-1 pl-4">
                         <input 
                           type="text" 
-                          readOnly={isLocked}
-                          className={`w-full border-none p-1 text-sm focus:ring-0 placeholder:text-slate-400 rounded ${isLocked ? 'text-indigo-700 font-semibold bg-indigo-50 cursor-not-allowed' : 'text-slate-700 bg-transparent'}`}
+                          readOnly={isDescLocked}
+                          className={`w-full border-none p-1 text-sm focus:ring-0 placeholder:text-slate-400 rounded 
+                            ${isDiagnosis ? 'font-bold text-slate-800 bg-transparent cursor-default' : ''}
+                            ${isRepoOrExt ? 'text-indigo-700 font-semibold bg-indigo-50 cursor-not-allowed' : ''}
+                            ${!isDescLocked ? 'text-slate-700 bg-transparent' : ''}
+                          `}
                           value={item.description}
                           onChange={(e) => handleItemChange(index, 'description', e.target.value)}
                           placeholder="Descripción..."
@@ -399,24 +445,27 @@ export default function EvaluationForm() {
                       <div className="w-32 pl-2">
                         <input
                           type="number"
-                          className="block w-full rounded-md border-0 py-1.5 pl-5 pr-3 text-right text-slate-900 ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                          className={`block w-full rounded-md border-0 py-1.5 pl-5 pr-3 text-right text-slate-900 ring-1 ring-inset focus:ring-2 sm:text-sm sm:leading-6
+                            ${isDiagnosis ? 'ring-indigo-200 focus:ring-indigo-600 bg-white' : 'ring-slate-300 focus:ring-indigo-600'}
+                          `}
                           value={item.price}
                           onChange={(e) => handleItemChange(index, 'price', e.target.value)}
                         />
                       </div>
                       <div className="w-8 flex justify-end">
-                        <button onClick={() => handleRemoveItem(index)} className="text-slate-400 hover:text-red-500">
-                          <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
-                        </button>
+                        {!isDiagnosis && (
+                          <button onClick={() => handleRemoveItem(index)} className="text-slate-400 hover:text-red-500">
+                            <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
                 })}
-                {items.length === 0 && <div className="p-4 text-center text-sm text-slate-400">No hay ítems agregados.</div>}
               </div>
             </div>
 
-            {/* ACCIONES DE AGREGADO */}
+            {/* ACCIONES (Agregado) */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col justify-between h-full">
                 <div><h3 className="text-xs font-bold text-slate-500 uppercase mb-3">Agregar Ítem Manual</h3></div>
@@ -466,43 +515,15 @@ export default function EvaluationForm() {
             />
             
             <div className="mt-6 flex justify-end gap-3 flex-wrap">
-              
-              {/* BOTONES DE ACCIÓN: Solo visibles si existe ID y no está cerrada */}
               {id && currentStatus !== 'approved' && currentStatus !== 'rejected' && (
                 <>
-                  {/* 👇 BOTÓN RECHAZAR (NUEVO) */}
-                  <button
-                    onClick={handleReject}
-                    disabled={loading || processingAction}
-                    className="px-6 py-2.5 rounded-lg bg-white border border-red-200 text-red-600 font-semibold hover:bg-red-50 hover:border-red-300 disabled:opacity-50 transition-all"
-                  >
-                    {processingAction ? "Procesando..." : "Rechazar Orden"}
-                  </button>
-
-                  {/* BOTÓN APROBAR */}
-                  <button 
-                    onClick={handleApproveAndGenerate} 
-                    disabled={loading || processingAction}
-                    className="px-6 py-2.5 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-700 disabled:opacity-50 shadow-sm shadow-emerald-200 transition-all flex items-center gap-2"
-                  >
-                    {processingAction ? "Generando..." : (
-                      <>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                        Aprobar y Generar Orden
-                      </>
-                    )}
+                  <button onClick={handleReject} disabled={loading || processingAction} className="px-6 py-2.5 rounded-lg bg-white border border-red-200 text-red-600 font-semibold hover:bg-red-50 hover:border-red-300 disabled:opacity-50 transition-all">{processingAction ? "Procesando..." : "Rechazar Orden"}</button>
+                  <button onClick={handleApproveAndGenerate} disabled={loading || processingAction} className="px-6 py-2.5 rounded-lg bg-emerald-600 text-white font-semibold hover:bg-emerald-700 disabled:opacity-50 shadow-sm shadow-emerald-200 transition-all flex items-center gap-2">
+                    {processingAction ? "Generando..." : (<><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>Aprobar y Generar Orden</>)}
                   </button>
                 </>
               )}
-
-              {/* BOTÓN GUARDAR (Siempre visible si no está procesando algo crítico) */}
-              <button 
-                onClick={handleSubmit} 
-                disabled={loading || processingAction}
-                className="px-6 py-2.5 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700 disabled:opacity-50 shadow-sm shadow-indigo-200 transition-all"
-              >
-                {loading ? "Guardando..." : (id ? "Guardar Cambios" : "Guardar Borrador")}
-              </button>
+              <button onClick={handleSubmit} disabled={loading || processingAction} className="px-6 py-2.5 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700 disabled:opacity-50 shadow-sm shadow-indigo-200 transition-all">{loading ? "Guardando..." : (id ? "Guardar Cambios" : "Guardar Borrador")}</button>
             </div>
           </div>
 

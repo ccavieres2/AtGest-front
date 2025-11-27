@@ -1,4 +1,4 @@
-// src/lib/api.js
+// src/lib/api.jsx
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api";
 
@@ -65,3 +65,6 @@ export const apiGet = (path) => request("GET", path);
 export const apiPost = (path, data) => request("POST", path, data);
 export const apiPut = (path, data) => request("PUT", path, data);
 export const apiDelete = (path) => request("DELETE", path);
+
+// 👇 ESTA ES LA FUNCIÓN QUE FALTABA Y SOLUCIONA EL ERROR EN ÓRDENES 👇
+export const apiPatch = (path, data) => request("PATCH", path, data);

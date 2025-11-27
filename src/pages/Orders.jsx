@@ -2,7 +2,7 @@
 import { useState, useEffect, Fragment } from "react";
 import { useNavigate } from "react-router-dom";
 import { Dialog, Transition } from "@headlessui/react";
-import { apiGet, apiPut } from "../lib/api";
+import { apiGet, apiPatch } from "../lib/api"; // 👈 Importamos apiPatch
 import AppNavbar from "../components/layout/AppNavbar";
 import AppDrawer from "../components/layout/AppDrawer";
 import AppFooter from "../components/layout/AppFooter";
@@ -53,7 +53,7 @@ function ItemTypeBadge({ text }) {
   return <span className="bg-slate-100 text-slate-600 text-[10px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide mr-2">Labor</span>;
 }
 
-// Limpia el texto para mostrarlo más bonito (quita los corchetes del inicio)
+// Limpia el texto para mostrarlo más bonito
 function formatDescription(text) {
   return text.replace(/\[REPUESTO\]|\[EXTERNO\]/g, "").trim();
 }
@@ -120,16 +120,29 @@ export default function Orders() {
     if (!editingOrder) return;
     setSaving(true);
     try {
-      await apiPut(`/orders/${editingOrder.id}/`, form);
+      // 1. Preparamos el payload corrigiendo el mecánico vacío
+      const payload = { ...form };
+      if (payload.mechanic === "") {
+        payload.mechanic = null; // Convertimos "" a null para que el backend no falle
+      }
+
+      // 2. Usamos apiPatch en lugar de apiPut para actualización parcial
+      await apiPatch(`/orders/${editingOrder.id}/`, payload);
       
-      // Actualización optimista local
+      // 3. Actualización optimista local
       setOrders(prev => prev.map(o => {
         if (o.id === editingOrder.id) {
-          const newMech = mechanics.find(m => m.id === Number(form.mechanic));
+          // Buscamos el nombre del mecánico si se asignó uno
+          let newMechName = null;
+          if (payload.mechanic) {
+             const m = mechanics.find(m => m.id === Number(payload.mechanic));
+             if (m) newMechName = m.username;
+          }
+
           return { 
             ...o, 
-            ...form, 
-            mechanic_name: newMech ? newMech.username : null 
+            ...payload, 
+            mechanic_name: newMechName 
           };
         }
         return o;
@@ -137,7 +150,8 @@ export default function Orders() {
       
       setIsEditOpen(false);
     } catch (error) {
-      alert("Error al actualizar la orden.");
+      console.error(error);
+      alert("Error al actualizar la orden. Revisa que los datos sean correctos.");
     } finally {
       setSaving(false);
     }
@@ -368,7 +382,8 @@ export default function Orders() {
                           >
                             <option value="">-- Sin asignar --</option>
                             {mechanics.map(m => (
-                              <option key={m.id} value={m.id}>{m.username} ({m.role === 'mechanic' ? 'Mecánico' : 'Ayudante'})</option>
+                              // ✅ CORRECCIÓN ROL: Usamos m.role directamente porque viene formateado del backend
+                              <option key={m.id} value={m.id}>{m.username} ({m.role})</option>
                             ))}
                           </select>
                           <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-500">
