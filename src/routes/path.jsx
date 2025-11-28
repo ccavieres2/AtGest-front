@@ -15,4 +15,7 @@ export const PATHS = {
   externalnew: "/external/new",
   externalid: "/external/:id",
   orders: "/orders",
+  profile: "/profile",
+  forgotPassword: "/forgot-password",
+  resetPassword: "/reset-password/:uid/:token",
 };

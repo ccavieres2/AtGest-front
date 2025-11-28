@@ -43,8 +43,7 @@ export default function Login() {
       // 3. Obtenemos datos del usuario actual (ID, nombre, etc.)
       const me = await apiGet("/auth/me/");
       
-      // 👇 IMPORTANTE: Guardamos el ID del usuario. 
-      // Esto es lo que usa ExternalMarket para saber si la tarjeta es tuya.
+      // Guardamos el ID del usuario.
       localStorage.setItem("userId", me.id); 
 
       setOkMsg(`¡Bienvenido, ${me.username}!`);
@@ -210,12 +209,15 @@ export default function Login() {
               >
                 Crear una cuenta
               </Link>
-              <button
-                type="button"
-                className="w-full border border-gray-300 text-gray-700 rounded-lg py-2 font-medium hover:bg-gray-100"
+              
+              {/* 👇 BOTÓN ACTUALIZADO PARA RECUPERAR CONTRASEÑA 👇 */}
+              <Link
+                to={PATHS.forgotPassword}
+                className="w-full text-center border border-gray-300 text-gray-700 rounded-lg py-2 font-medium hover:bg-gray-100 transition-colors"
               >
                 Recuperar contraseña
-              </button>
+              </Link>
+              {/* 👆 FIN ACTUALIZACIÓN 👆 */}
             </div>
           </form>
         </div>

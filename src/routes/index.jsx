@@ -19,7 +19,9 @@ const EvaluationForm = lazy(() => import("../pages/EvaluationForm"));
 const ExternalMarket = lazy(() => import("../externalizacion/ExternalMarket"));
 const OfferForm = lazy(() => import("../externalizacion/OfferForm"));
 const Orders = lazy(() => import("../pages/Orders"));
-
+const Profile = lazy(() => import("../pages/Profile"));
+const ForgotPassword = lazy(() => import("../pages/ForgotPassword"));
+const ResetPassword = lazy(() => import("../pages/ResetPassword"));
 
 
 export default function AppRoutes() {
@@ -43,6 +45,9 @@ export default function AppRoutes() {
           <Route path={PATHS.externalnew} element={<OfferForm />} />
           <Route path={PATHS.externalid} element={<OfferForm />} />
           <Route path={PATHS.orders} element={<Orders />} />
+          <Route path={PATHS.profile} element={<Profile />} />
+          <Route path={PATHS.forgotPassword} element={<ForgotPassword />} />
+          <Route path={PATHS.resetPassword} element={<ResetPassword />} />
         </Routes>
       </Suspense>
     </BrowserRouter>

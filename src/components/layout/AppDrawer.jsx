@@ -3,9 +3,9 @@ import { useNavigate } from "react-router-dom";
 
 export default function AppDrawer({ open, onClose }) {
   const navigate = useNavigate();
-  const role = localStorage.getItem("role"); // 👈 Leemos el rol aquí mismo
+  const role = localStorage.getItem("role"); 
 
-  // Definimos los menús base (para todos)
+  // Definimos los menús base
   const menuItems = [
     { 
       label: "Dashboard", 
@@ -14,7 +14,7 @@ export default function AppDrawer({ open, onClose }) {
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><path d="M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/><path d="m9 14 2 2 4-4"/></svg>
       )
     },
-        { 
+    { 
       label: "Clientes", 
       path: "/clients",
       icon: (
@@ -55,7 +55,7 @@ export default function AppDrawer({ open, onClose }) {
     },
   ];
 
-  // 👇 Lógica condicional centralizada
+  // Agregar "Mi Personal" si es dueño
   if (role === 'owner') {
     menuItems.push({
       label: "Mi Personal",
@@ -76,14 +76,15 @@ export default function AppDrawer({ open, onClose }) {
         />
       )}
 
-      {/* Panel lateral */}
+      {/* Panel lateral: flex flex-col para empujar el perfil al fondo */}
       <aside
-        className={`fixed inset-y-0 right-0 z-50 w-72 bg-white border-l shadow-lg transform transition-transform duration-200 ${
+        className={`fixed inset-y-0 right-0 z-50 w-72 bg-white border-l shadow-lg transform transition-transform duration-200 flex flex-col ${
           open ? "translate-x-0" : "translate-x-full"
         }`}
         aria-hidden={!open}
       >
-        <div className="flex items-center gap-2 p-4 border-b bg-slate-50">
+        {/* Cabecera */}
+        <div className="flex items-center gap-2 p-4 border-b bg-slate-50 shrink-0">
           <div className="font-bold text-slate-700">Menú</div>
           <button 
             className="ml-auto rounded-lg p-2 hover:bg-slate-200 transition-colors" 
@@ -96,13 +97,14 @@ export default function AppDrawer({ open, onClose }) {
           </button>
         </div>
 
-        <nav className="p-3 space-y-1">
+        {/* Lista de Navegación (flex-1 para ocupar el espacio disponible) */}
+        <nav className="p-3 space-y-1 flex-1 overflow-y-auto">
           {menuItems.map((item) => (
             <button
               key={item.path}
               onClick={() => {
                 navigate(item.path);
-                onClose(); // Cerrar drawer al navegar
+                onClose();
               }}
               className="w-full text-left flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
             >
@@ -111,6 +113,31 @@ export default function AppDrawer({ open, onClose }) {
             </button>
           ))}
         </nav>
+
+        {/* 👇 SECCIÓN PERFIL (Solo dueños, pegada al fondo) */}
+        {role === 'owner' && (
+          <div className="p-3 border-t border-slate-100 bg-slate-50/50 shrink-0 mt-auto">
+            <button
+              onClick={() => {
+                navigate("/profile");
+                onClose();
+              }}
+              className="w-full flex items-center gap-3 rounded-xl px-4 py-3 bg-white border border-slate-200 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all group text-left"
+            >
+              <div className="h-9 w-9 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-sm border border-indigo-200">
+                ME
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-slate-800 group-hover:text-indigo-700 truncate">Mi Perfil</p>
+                <p className="text-xs text-slate-500 truncate">Editar mis datos</p>
+              </div>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4 ml-auto text-slate-400 group-hover:text-indigo-500">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+              </svg>
+            </button>
+          </div>
+        )}
+
       </aside>
     </>
   );
