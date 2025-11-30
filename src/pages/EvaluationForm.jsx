@@ -76,6 +76,7 @@ export default function EvaluationForm() {
       const pendingServiceStr = sessionStorage.getItem("pendingExternalService");
       const savedStateStr = sessionStorage.getItem("tempEvaluationState");
 
+      // CASO A: Vuelvo de seleccionar un servicio externo (Estado temporal)
       if (savedStateStr) {
         console.log("Restaurando estado desde sesión...");
         const savedState = JSON.parse(savedStateStr);
@@ -90,6 +91,7 @@ export default function EvaluationForm() {
 
         if (pendingServiceStr) {
           const service = JSON.parse(pendingServiceStr);
+          // Evitar duplicados si recarga la página
           const isDuplicate = currentItems.length > 0 && 
                               currentItems[currentItems.length - 1].externalId === service.id;
 
@@ -98,7 +100,7 @@ export default function EvaluationForm() {
               description: `[EXTERNO] ${service.name} - ${service.provider_name}`,
               price: Number(service.cost),
               is_approved: true,
-              externalId: service.id
+              externalId: service.id // Guardamos ID para enviarlo al backend
             };
             currentItems = [...currentItems, newItem];
           }
@@ -116,13 +118,24 @@ export default function EvaluationForm() {
         return; 
       }
 
+      // CASO B: Cargo una evaluación existente desde la API (Edición)
       if (id) {
         setLoadingData(true);
         try {
           const data = await apiGet(`/evaluations/${id}/`);
           setSelectedClient(data.client);
           setNotes(data.notes);
-          setItems(data.items || []);
+          
+          // 👇👇 CORRECCIÓN CRÍTICA PARA B2B 👇👇
+          // Mapeamos los ítems que vienen del backend para restaurar 'externalId'
+          const loadedItems = (data.items || []).map(item => ({
+            ...item,
+            // Si el backend nos devuelve 'external_service_source', lo guardamos como 'externalId'
+            // Esto asegura que al volver a guardar, no se pierda el vínculo B2B.
+            externalId: item.external_service_source || null
+          }));
+          
+          setItems(loadedItems);
           setCurrentStatus(data.status);
           
           if (data.client) {
@@ -145,8 +158,10 @@ export default function EvaluationForm() {
 
   // --- NAVEGACIÓN Y HELPERS ---
   const handleGoToExternal = () => {
+    // Guardamos todo el estado actual antes de ir al "Mercado"
     const stateToSave = { client: selectedClient, vehicle: selectedVehicle, notes: notes, items: items };
     sessionStorage.setItem("tempEvaluationState", JSON.stringify(stateToSave));
+    
     const returnPath = location.pathname; 
     navigate(`/external?selectMode=true&returnUrl=${encodeURIComponent(returnPath)}`);
   };
@@ -223,7 +238,6 @@ export default function EvaluationForm() {
   const totalBudget = items.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
   const totalApproved = items.filter(i => i.is_approved).reduce((sum, item) => sum + (Number(item.price) || 0), 0);
 
-  // 👇 NUEVA FUNCIÓN: GENERAR PDF 👇
   const handlePrint = () => {
     const clientObj = clients.find(c => c.id === Number(selectedClient));
     const vehicleObj = vehicles.find(v => v.id === Number(selectedVehicle));
@@ -261,6 +275,7 @@ export default function EvaluationForm() {
         evalId = res.id;
       }
       
+      // Enviamos items, asegurando que vaya el campo 'externalId' si existe
       await apiPost(`/evaluations/${evalId}/update_items/`, {
         items: items.filter((i, idx) => idx === 0 || i.description.trim() !== "")
       });
@@ -306,8 +321,11 @@ export default function EvaluationForm() {
     if (!confirm("¿Confirmas la aprobación del presupuesto y generación de Orden de Trabajo?")) return;
     setProcessingAction(true);
     try {
-      const evalId = await handleSubmit(null);
+      // 1. Primero guardamos para asegurar que los datos en backend estén frescos (incluyendo items nuevos)
+      const evalId = await handleSubmit(null); 
       if (!evalId) throw new Error("No ID");
+      
+      // 2. Generamos la orden
       const res = await apiPost(`/evaluations/${evalId}/generate_order/`, {});
       alert(`¡Orden generada con éxito! (ID: ${res.order_id})`);
       navigate("/orders"); 
@@ -334,12 +352,11 @@ export default function EvaluationForm() {
 
       <main className="flex-1 mx-auto max-w-5xl w-full px-4 py-8">
         
-        {/* CABECERA CON TÍTULO Y BOTÓN DE IMPRIMIR */}
+        {/* CABECERA */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
             <h1 className="text-2xl font-bold text-slate-900">{id ? `Editando #${id}` : "Crear Diagnóstico"}</h1>
             
-            {/* 👇 BOTÓN IMPRIMIR INTEGRADO 👇 */}
             <button 
               onClick={handlePrint}
               type="button"
@@ -465,7 +482,7 @@ export default function EvaluationForm() {
               </div>
             </div>
 
-            {/* ACCIONES (Agregado) */}
+            {/* ACCIONES */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col justify-between h-full">
                 <div><h3 className="text-xs font-bold text-slate-500 uppercase mb-3">Agregar Ítem Manual</h3></div>

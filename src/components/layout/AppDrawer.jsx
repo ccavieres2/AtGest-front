@@ -47,6 +47,13 @@ export default function AppDrawer({ open, onClose }) {
       )
     },
     { 
+      label: "Solicitudes B2B",  // 👈 Nuevo ítem
+      path: "/requests",
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5"><path d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"/></svg>
+      )
+    },
+    { 
       label: "Externalización", 
       path: "/external",
       icon: (

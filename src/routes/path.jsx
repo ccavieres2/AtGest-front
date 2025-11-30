@@ -18,4 +18,5 @@ export const PATHS = {
   profile: "/profile",
   forgotPassword: "/forgot-password",
   resetPassword: "/reset-password/:uid/:token",
+  requests: "/requests",
 };

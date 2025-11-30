@@ -22,6 +22,7 @@ const Orders = lazy(() => import("../pages/Orders"));
 const Profile = lazy(() => import("../pages/Profile"));
 const ForgotPassword = lazy(() => import("../pages/ForgotPassword"));
 const ResetPassword = lazy(() => import("../pages/ResetPassword"));
+const RequestsManager = lazy(() => import("../pages/RequestsManager"));
 
 
 export default function AppRoutes() {
@@ -48,6 +49,7 @@ export default function AppRoutes() {
           <Route path={PATHS.profile} element={<Profile />} />
           <Route path={PATHS.forgotPassword} element={<ForgotPassword />} />
           <Route path={PATHS.resetPassword} element={<ResetPassword />} />
+          <Route path={PATHS.requests} element={<RequestsManager />} />
         </Routes>
       </Suspense>
     </BrowserRouter>
