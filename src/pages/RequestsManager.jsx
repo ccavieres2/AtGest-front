@@ -4,14 +4,22 @@ import { apiGet, apiPost } from "../lib/api";
 import AppNavbar from "../components/layout/AppNavbar";
 import AppDrawer from "../components/layout/AppDrawer";
 import AppFooter from "../components/layout/AppFooter";
+import ChatWindow from "../externalizacion/ChatWindow"; // 👈 Importamos el componente de chat
 
 export default function RequestsManager() {
   const [drawerOpen, setDrawerOpen] = useState(false);
+  
+  // Estados de datos
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("received"); // 'received' | 'sent'
   
-  // Obtenemos el ID del usuario actual para filtrar en el front visualmente
+  // Estado de la interfaz
+  const [activeTab, setActiveTab] = useState("received"); // 'received' (Proveedor) | 'sent' (Cliente)
+  
+  // Estado para controlar el chat modal
+  const [selectedChatRequest, setSelectedChatRequest] = useState(null); 
+
+  // Obtenemos el ID del usuario actual para filtrar qué mostrar
   const currentUserId = Number(localStorage.getItem("userId"));
 
   useEffect(() => {
@@ -24,133 +32,189 @@ export default function RequestsManager() {
       const data = await apiGet("/requests/");
       setRequests(data);
     } catch (error) {
-      console.error(error);
+      console.error("Error cargando solicitudes:", error);
     } finally {
       setLoading(false);
     }
   };
 
   const handleResponse = async (id, status) => {
-    if(!confirm(`¿Estás seguro de marcar como ${status}?`)) return;
+    const actionMap = {
+      accepted: "aceptar",
+      rejected: "rechazar",
+      completed: "completar"
+    };
+    
+    if (!confirm(`¿Estás seguro de ${actionMap[status]} esta solicitud?`)) return;
+
     try {
       await apiPost(`/requests/${id}/respond/`, { status });
-      loadRequests(); // Recargar lista
+      loadRequests(); // Recargamos para ver el cambio de estado
     } catch (error) {
-      alert("Error al actualizar estado.");
+      console.error(error);
+      alert("Error al actualizar el estado de la solicitud.");
     }
   };
 
-  // Filtrar según pestaña
+  // Filtramos las solicitudes según la pestaña activa
   const displayedRequests = requests.filter(req => {
-    if (activeTab === "received") return req.provider === currentUserId;
-    if (activeTab === "sent") return req.requester === currentUserId;
+    if (activeTab === "received") {
+      // Soy el PROVEEDOR (Carlos): Me muestran lo que me pidieron a mí
+      return req.provider === currentUserId;
+    } 
+    if (activeTab === "sent") {
+      // Soy el SOLICITANTE (Iván): Muestro lo que yo pedí a otros
+      return req.requester === currentUserId;
+    }
     return false;
   });
 
   const getStatusBadge = (status) => {
-    const map = {
-      pending: "bg-yellow-100 text-yellow-800",
-      accepted: "bg-green-100 text-green-800",
-      rejected: "bg-red-100 text-red-800",
-      completed: "bg-blue-100 text-blue-800",
+    const styles = {
+      pending: "bg-yellow-100 text-yellow-800 border-yellow-200",
+      accepted: "bg-emerald-100 text-emerald-800 border-emerald-200",
+      rejected: "bg-red-100 text-red-800 border-red-200",
+      completed: "bg-blue-100 text-blue-800 border-blue-200",
     };
-    const label = {
+    const labels = {
       pending: "Pendiente",
-      accepted: "Aceptada",
+      accepted: "En Proceso",
       rejected: "Rechazada",
       completed: "Finalizada"
     };
     return (
-      <span className={`px-2 py-1 rounded-full text-xs font-bold ${map[status] || "bg-gray-100"}`}>
-        {label[status] || status}
+      <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${styles[status] || "bg-gray-100"}`}>
+        {labels[status] || status}
       </span>
     );
   };
 
+  // Items para el menú lateral
+  const drawerItems = [
+    { label: "Volver al Dashboard", path: "/dashboard" },
+    { label: "Mercado Externo", path: "/external" },
+  ];
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
       <AppNavbar 
-        title="Gestión de Solicitudes" 
+        title="Gestión B2B" 
         onOpenDrawer={() => setDrawerOpen(true)}
         onLogout={() => { localStorage.clear(); location.href = "/login"; }}
       />
-      <AppDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
+      <AppDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} items={drawerItems} />
 
       <main className="flex-1 mx-auto max-w-5xl w-full px-4 py-8">
-        <h1 className="text-2xl font-bold text-slate-900 mb-6">Solicitudes de Servicios</h1>
+        
+        <div className="mb-8">
+          <h1 className="text-2xl font-bold text-slate-900">Solicitudes de Servicios</h1>
+          <p className="text-slate-500">Gestiona los trabajos externalizados entre talleres.</p>
+        </div>
 
-        {/* Tabs */}
+        {/* PESTAÑAS */}
         <div className="flex border-b border-slate-200 mb-6">
           <button
             onClick={() => setActiveTab("received")}
-            className={`px-6 py-3 text-sm font-medium ${activeTab === 'received' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
+            className={`px-6 py-3 text-sm font-medium transition-colors border-b-2 ${
+              activeTab === 'received' 
+                ? 'border-indigo-600 text-indigo-600' 
+                : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+            }`}
           >
-            📥 Solicitudes Recibidas (Soy Proveedor)
+            📥 Recibidas (Soy Proveedor)
           </button>
           <button
             onClick={() => setActiveTab("sent")}
-            className={`px-6 py-3 text-sm font-medium ${activeTab === 'sent' ? 'border-b-2 border-indigo-600 text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}
+            className={`px-6 py-3 text-sm font-medium transition-colors border-b-2 ${
+              activeTab === 'sent' 
+                ? 'border-indigo-600 text-indigo-600' 
+                : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+            }`}
           >
-            📤 Solicitudes Enviadas (Soy Cliente)
+            📤 Enviadas (Soy Cliente)
           </button>
         </div>
 
-        {/* Lista */}
+        {/* LISTADO */}
         <div className="space-y-4">
           {loading ? (
-            <div className="text-center text-slate-500 py-10">Cargando...</div>
+            <div className="text-center text-slate-500 py-12">Cargando solicitudes...</div>
           ) : displayedRequests.length === 0 ? (
-            <div className="text-center text-slate-500 py-10 bg-white rounded-xl border border-dashed">
-              No tienes solicitudes en esta sección.
+            <div className="text-center py-12 bg-white rounded-2xl border border-dashed border-slate-300">
+              <p className="text-slate-500">No hay solicitudes en esta sección.</p>
             </div>
           ) : (
             displayedRequests.map(req => (
-              <div key={req.id} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div key={req.id} className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow flex flex-col md:flex-row md:items-center justify-between gap-4">
                 
-                {/* Info Izquierda */}
-                <div>
-                  <div className="flex items-center gap-3 mb-1">
-                    <h3 className="font-bold text-slate-800">{req.service_name}</h3>
+                {/* Información de la solicitud */}
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-2">
+                    <h3 className="font-bold text-slate-800 text-lg">{req.service_name}</h3>
                     {getStatusBadge(req.status)}
                   </div>
-                  <p className="text-sm text-slate-600">
-                    {activeTab === 'received' 
-                      ? <>Solicitado por: <strong className="text-indigo-600">{req.requester_name}</strong></> 
-                      : <>Proveedor: <strong className="text-indigo-600">{req.provider_name}</strong></>
-                    }
-                  </p>
-                  <p className="text-xs text-slate-400 mt-1">
-                    {new Date(req.created_at).toLocaleDateString()} • Ref. Orden #{req.related_order_id || "?"}
-                  </p>
+                  
+                  <div className="text-sm text-slate-600 space-y-1">
+                    <p>
+                      {activeTab === 'received' 
+                        ? <>Solicitado por: <strong className="text-indigo-600">{req.requester_name}</strong></> 
+                        : <>Proveedor: <strong className="text-indigo-600">{req.provider_name}</strong></>
+                      }
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      Fecha: {new Date(req.created_at).toLocaleDateString("es-CL", { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}
+                      {req.related_order_id && <span className="ml-2">• Ref. OT #{req.related_order_id}</span>}
+                    </p>
+                  </div>
                 </div>
 
-                {/* Acciones (Solo para Recibidas y Pendientes) */}
-                {activeTab === 'received' && req.status === 'pending' && (
-                  <div className="flex gap-2">
-                    <button 
-                      onClick={() => handleResponse(req.id, 'rejected')}
-                      className="px-4 py-2 rounded-lg border border-red-200 text-red-600 text-sm font-semibold hover:bg-red-50"
+                {/* Botonera de Acciones */}
+                <div className="flex flex-wrap items-center gap-2">
+                  
+                  {/* CHAT: Visible si está aceptada o completada */}
+                  {(req.status === 'accepted' || req.status === 'completed') && (
+                    <button
+                      onClick={() => setSelectedChatRequest(req)}
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-50 text-indigo-700 text-sm font-semibold hover:bg-indigo-100 border border-indigo-100 transition-colors"
                     >
-                      Rechazar
+                      <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                      </svg>
+                      Mensajes
                     </button>
-                    <button 
-                      onClick={() => handleResponse(req.id, 'accepted')}
-                      className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 shadow-sm"
-                    >
-                      Aceptar Trabajo
-                    </button>
-                  </div>
-                )}
+                  )}
 
-                {/* Acción Completar (Para Recibidas y Aceptadas) */}
-                {activeTab === 'received' && req.status === 'accepted' && (
-                  <button 
-                    onClick={() => handleResponse(req.id, 'completed')}
-                    className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 shadow-sm"
-                  >
-                    Marcar Completado
-                  </button>
-                )}
+                  {/* Acciones para el PROVEEDOR (Carlos) */}
+                  {activeTab === 'received' && (
+                    <>
+                      {req.status === 'pending' && (
+                        <>
+                          <button 
+                            onClick={() => handleResponse(req.id, 'rejected')}
+                            className="px-4 py-2 rounded-lg border border-red-200 text-red-600 text-sm font-semibold hover:bg-red-50 transition-colors"
+                          >
+                            Rechazar
+                          </button>
+                          <button 
+                            onClick={() => handleResponse(req.id, 'accepted')}
+                            className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 shadow-sm transition-colors"
+                          >
+                            Aceptar Trabajo
+                          </button>
+                        </>
+                      )}
+
+                      {req.status === 'accepted' && (
+                        <button 
+                          onClick={() => handleResponse(req.id, 'completed')}
+                          className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 shadow-sm transition-colors"
+                        >
+                          Marcar Terminado
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
 
               </div>
             ))
@@ -158,7 +222,17 @@ export default function RequestsManager() {
         </div>
 
       </main>
+      
       <AppFooter />
+
+      {/* RENDERIZADO DEL CHAT MODAL */}
+      {selectedChatRequest && (
+        <ChatWindow 
+          request={selectedChatRequest} 
+          onClose={() => setSelectedChatRequest(null)} 
+        />
+      )}
+
     </div>
   );
 }
