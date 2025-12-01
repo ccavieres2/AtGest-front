@@ -11,7 +11,7 @@ export default function AppDrawer({ open, onClose }) {
       label: "Dashboard", 
       path: "/dashboard",
       icon: (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><path d="M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/><path d="m9 14 2 2 4-4"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 00-2-2h-2"/><path d="M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/><path d="m9 14 2 2 4-4"/></svg>
       )
     },
     { 
@@ -47,7 +47,7 @@ export default function AppDrawer({ open, onClose }) {
       )
     },
     { 
-      label: "Solicitudes B2B",  // 👈 Nuevo ítem
+      label: "Solicitudes y Mensajes",
       path: "/requests",
       icon: (
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5"><path d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"/></svg>
@@ -90,15 +90,16 @@ export default function AppDrawer({ open, onClose }) {
         }`}
         aria-hidden={!open}
       >
-        {/* Cabecera */}
-        <div className="flex items-center gap-2 p-4 border-b bg-slate-50 shrink-0">
+        {/* Cabecera Modificada para alineación */}
+        <div className="flex items-center gap-2 px-4 py-3 border-b bg-slate-50 shrink-0">
           <div className="font-bold text-slate-700">Menú</div>
           <button 
             className="ml-auto rounded-lg p-2 hover:bg-slate-200 transition-colors" 
             onClick={onClose} 
             title="Cerrar menú"
           >
-            <svg viewBox="0 0 24 24" className="h-5 w-5 text-slate-600" fill="none" stroke="currentColor" strokeWidth="2">
+            {/* Icono ajustado a h-6 w-6 */}
+            <svg viewBox="0 0 24 24" className="h-6 w-6 text-slate-600" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M6 6l12 12M18 6L6 18" />
             </svg>
           </button>
@@ -121,7 +122,7 @@ export default function AppDrawer({ open, onClose }) {
           ))}
         </nav>
 
-        {/* 👇 SECCIÓN PERFIL (Solo dueños, pegada al fondo) */}
+        {/* SECCIÓN PERFIL (Solo dueños, pegada al fondo) */}
         {role === 'owner' && (
           <div className="p-3 border-t border-slate-100 bg-slate-50/50 shrink-0 mt-auto">
             <button

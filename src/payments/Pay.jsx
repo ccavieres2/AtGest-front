@@ -46,7 +46,7 @@ export default function Pay() {
     return actions.order.create({
       purchase_units: [
         {
-          amount: { value: "10.00" }, // <-- El monto de registro
+          amount: { value: "25.00" }, // <-- El monto de registro
           description: "Suscripción inicial Atgest",
         },
       ],
@@ -140,7 +140,7 @@ export default function Pay() {
             Estás registrando la cuenta: <strong className="text-indigo-600">{registrationData.username}</strong>
           </p>
           <p className="text-sm text-gray-600 mb-4">
-            Costo de suscripción: <strong className="text-indigo-600">$10.00 USD</strong>
+            Costo de suscripción: <strong className="text-indigo-600">$25.00 USD</strong>
           </p>
           
           {/* Mostramos los botones o un mensaje de "Procesando" */}
