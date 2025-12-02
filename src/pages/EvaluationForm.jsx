@@ -539,7 +539,7 @@ export default function EvaluationForm() {
               </div>
               <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 flex flex-col justify-between h-full">
                 <div>
-                  <h3 className="text-xs font-bold text-indigo-700 uppercase mb-3">Repuesto de Inventario</h3>
+                  <h3 className="text-xs font-bold text-indigo-700 uppercase mb-3">selecciona un producto</h3>
                   <div className="flex gap-2 mb-2">
                     <div className="flex-1">
                       {/* 👇 CAMBIO: Filtro quantity > 0 y display con (Stock: X) */}

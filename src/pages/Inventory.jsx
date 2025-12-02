@@ -103,7 +103,7 @@ export default function Inventory() {
       }));
       setItems(norm);
     } catch (e) {
-      alert("No se pudo cargar el inventario.");
+      alert("No se pudo cargar el producto.");
     } finally {
       setLoadingList(false);
     }
@@ -192,7 +192,7 @@ export default function Inventory() {
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
       <AppNavbar 
-        title="Inventario" 
+        title="Productos" 
         onOpenDrawer={() => setDrawerOpen(true)} 
         onLogout={() => { localStorage.clear(); location.href = "/login"; }} 
       />
@@ -241,7 +241,7 @@ export default function Inventory() {
             <div className="col-span-1 text-right">Acciones</div>
           </div>
 
-          {loadingList && <div className="px-6 py-8 text-center text-sm text-slate-500">Cargando inventario...</div>}
+          {loadingList && <div className="px-6 py-8 text-center text-sm text-slate-500">Cargando productos...</div>}
 
           <ul className="divide-y divide-slate-100">
             {filtered.map((p) => (
@@ -366,7 +366,7 @@ export default function Inventory() {
                     <p className="text-sm text-slate-500">
                       Estás a punto de eliminar <strong>{itemToDelete?.name}</strong>.
                       <br/>
-                      Esta acción eliminará el producto del inventario permanentemente.
+                      Esta acción eliminará el producto permanentemente.
                     </p>
                   </div>
                 </div>
