@@ -77,7 +77,8 @@ export default function Inventory() {
   // Estados Modal Formulario
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState({ name: "", sku: "", quantity: 0, price: 0, category: "", location: "", status: "Activo" });
+  // 1. Eliminamos 'price' del estado inicial
+  const [form, setForm] = useState({ name: "", sku: "", quantity: 0, category: "", location: "", status: "Activo" });
   const [saving, setSaving] = useState(false);
   const [errMsg, setErrMsg] = useState("");
   
@@ -95,7 +96,7 @@ export default function Inventory() {
         name: i.name,
         sku: i.sku,
         quantity: i.quantity,
-        price: Number(i.price),
+        // price: Number(i.price), // Ya no necesitamos leer el precio
         category: i.category || "",
         location: i.location || "",
         status: STATUS[i.status] || "Activo",
@@ -123,7 +124,8 @@ export default function Inventory() {
   // Funciones Modal Formulario
   function openAdd() {
     setErrMsg("");
-    setForm({ name: "", sku: "", quantity: 0, price: 0, category: "", location: "", status: "Activo" });
+    // 2. Quitamos precio del reset
+    setForm({ name: "", sku: "", quantity: 0, category: "", location: "", status: "Activo" });
     setEditing(null);
     setModalOpen(true);
   }
@@ -147,7 +149,7 @@ export default function Inventory() {
         name: form.name,
         sku: form.sku,
         quantity: Number(form.quantity),
-        price: Number(form.price),
+        // price: 0, // No enviamos precio, el backend pondrá 0 por defecto
         category: form.category,
         location: form.location,
         status: STATUS_FROM_LABEL[form.status] || "active",
@@ -229,11 +231,12 @@ export default function Inventory() {
 
         {/* Tabla */}
         <div className="mt-4 overflow-hidden rounded-2xl border bg-white shadow-sm">
-          <div className="hidden md:grid grid-cols-12 gap-4 border-b bg-slate-50 px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+          {/* 3. Se eliminó la columna de Precio en el Header */}
+          <div className="hidden md:grid grid-cols-10 gap-4 border-b bg-slate-50 px-6 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
             <div className="col-span-3">Nombre</div>
             <div className="col-span-2">SKU</div>
             <div className="col-span-2">Cantidad</div>
-            <div className="col-span-2">Precio</div>
+            {/* <div className="col-span-2">Precio</div> Eliminado */}
             <div className="col-span-2">Estado</div>
             <div className="col-span-1 text-right">Acciones</div>
           </div>
@@ -242,7 +245,8 @@ export default function Inventory() {
 
           <ul className="divide-y divide-slate-100">
             {filtered.map((p) => (
-              <li key={p.id} className="grid grid-cols-1 md:grid-cols-12 gap-2 px-6 py-4 hover:bg-slate-50 transition-colors group">
+              // 4. Se ajustó el grid a 10 columnas
+              <li key={p.id} className="grid grid-cols-1 md:grid-cols-10 gap-2 px-6 py-4 hover:bg-slate-50 transition-colors group">
                 <div className="md:col-span-3">
                   <div className="font-medium text-slate-900">{p.name}</div>
                   <div className="text-xs text-slate-500">
@@ -254,7 +258,9 @@ export default function Inventory() {
                 <div className="md:col-span-2 text-slate-700 flex items-center">
                   <span className={`font-medium ${p.quantity === 0 ? 'text-red-600' : ''}`}>{p.quantity}</span>
                 </div>
-                <div className="md:col-span-2 text-slate-700 flex items-center">${p.price.toLocaleString('es-CL', { maximumFractionDigits: 0 })}</div>
+                
+                {/* Precio Eliminado de aquí */}
+
                 <div className="md:col-span-2 flex items-center">
                   <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
                     p.status === "Activo" ? "bg-emerald-100 text-emerald-700"
@@ -265,9 +271,7 @@ export default function Inventory() {
                   </span>
                 </div>
                 
-                {/* Botones de acción SIEMPRE visibles */}
                 <div className="md:col-span-1 flex items-center justify-end gap-1">
-                  {/* Editar (Icono Lápiz) */}
                   <IconButton title="Editar" onClick={() => openEdit(p.id)}>
                     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
@@ -275,7 +279,6 @@ export default function Inventory() {
                     </svg>
                   </IconButton>
                   
-                  {/* Eliminar (Icono Basura) */}
                   <IconButton title="Eliminar" onClick={() => openDeleteModal(p)} className="text-red-400 hover:bg-red-50 hover:text-red-600">
                     <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -318,20 +321,18 @@ export default function Inventory() {
               <input type="number" min="0" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: Number(e.target.value) })} className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500" />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">Precio</label>
-              <input type="number" min="0" value={form.price} onChange={(e) => setForm({ ...form, price: Number(e.target.value) })} className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">Estado</label>
-              <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value }) } className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
-                <option>Activo</option>
-                <option>Inactivo</option>
-                <option>Sin stock</option>
-              </select>
-            </div>
+          
+          {/* 5. Eliminamos el input de Precio */}
+          
+          <div>
+            <label className="block text-xs font-medium text-slate-700 mb-1">Estado</label>
+            <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value }) } className="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+              <option>Activo</option>
+              <option>Inactivo</option>
+              <option>Sin stock</option>
+            </select>
           </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-slate-700 mb-1">Categoría</label>
@@ -345,25 +346,22 @@ export default function Inventory() {
         </div>
       </Modal>
       
-      {/* Modal Confirmar Eliminación */}
+      {/* Modal Confirmar Eliminación (Sin Cambios) */}
       <Transition appear show={isDeleteModalOpen} as={Fragment}>
         <Dialog as="div" className="relative z-50" onClose={() => !isDeleting && setIsDeleteModalOpen(false)}>
           <div className="fixed inset-0 bg-black/30 backdrop-blur-sm" aria-hidden="true" />
           <div className="fixed inset-0 overflow-y-auto">
             <div className="flex min-h-full items-center justify-center p-4 text-center">
               <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-white p-6 text-left align-middle shadow-xl transition-all">
-                
                 <div className="text-center">
                   <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-100 mb-4">
                     <svg className="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
                     </svg>
                   </div>
-                  
                   <Dialog.Title as="h3" className="text-lg font-bold leading-6 text-slate-900">
                     ¿Eliminar Producto?
                   </Dialog.Title>
-                  
                   <div className="mt-2">
                     <p className="text-sm text-slate-500">
                       Estás a punto de eliminar <strong>{itemToDelete?.name}</strong>.
@@ -372,26 +370,10 @@ export default function Inventory() {
                     </p>
                   </div>
                 </div>
-
                 <div className="mt-6 grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    className="inline-flex w-full justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-base font-medium text-slate-700 shadow-sm hover:bg-slate-50 focus:outline-none sm:text-sm transition-colors"
-                    onClick={() => setIsDeleteModalOpen(false)}
-                    disabled={isDeleting}
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="button"
-                    className="inline-flex w-full justify-center rounded-lg border border-transparent bg-red-600 px-4 py-2 text-base font-medium text-white shadow-sm hover:bg-red-700 focus:outline-none sm:text-sm transition-colors disabled:opacity-70"
-                    onClick={confirmDelete}
-                    disabled={isDeleting}
-                  >
-                    {isDeleting ? "Eliminando..." : "Eliminar"}
-                  </button>
+                  <button type="button" className="inline-flex w-full justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-base font-medium text-slate-700 shadow-sm hover:bg-slate-50 focus:outline-none sm:text-sm transition-colors" onClick={() => setIsDeleteModalOpen(false)} disabled={isDeleting}>Cancelar</button>
+                  <button type="button" className="inline-flex w-full justify-center rounded-lg border border-transparent bg-red-600 px-4 py-2 text-base font-medium text-white shadow-sm hover:bg-red-700 focus:outline-none sm:text-sm transition-colors disabled:opacity-70" onClick={confirmDelete} disabled={isDeleting}>{isDeleting ? "Eliminando..." : "Eliminar"}</button>
                 </div>
-
               </Dialog.Panel>
             </div>
           </div>

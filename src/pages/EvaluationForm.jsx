@@ -131,10 +131,12 @@ export default function EvaluationForm() {
           setNotes(data.notes);
           setCreatedBy(data.created_by_name); // 👇 Capturamos el nombre del creador
           
-          // 👇👇 CORRECCIÓN CRÍTICA PARA B2B 👇👇
+          // 👇👇 CORRECCIÓN CRÍTICA PARA B2B Y STOCK 👇👇
           const loadedItems = (data.items || []).map(item => ({
             ...item,
-            externalId: item.external_service_source || null
+            externalId: item.external_service_source || null,
+            inventoryId: item.inventory_item || null, // Recibimos el ID si existe
+            qty: item.quantity || 1
           }));
           
           setItems(loadedItems);
@@ -200,30 +202,47 @@ export default function EvaluationForm() {
     setItems([...items, { description: "", price: 0, is_approved: true }]);
   };
 
+  // --- LÓGICA DE AGREGAR DESDE INVENTARIO ---
   const handleAddPartFromInventory = () => {
     if (!selectedPartId) return alert("Selecciona un repuesto.");
     if (partQty < 1) return alert("La cantidad debe ser al menos 1.");
+    
     const part = inventory.find(p => p.id === Number(selectedPartId));
     if (!part) return;
 
+    // Validación 1: Verificar si hay stock suficiente inicialmente
+    if (part.quantity < partQty) {
+        return alert(`Stock insuficiente. Solo quedan ${part.quantity} unidades de ${part.name}.`);
+    }
+
     const existingIndex = items.findIndex(item => item.inventoryId === part.id);
+    
     if (existingIndex >= 0) {
+      // Si ya existe, sumamos cantidad
       const newItems = [...items];
       const itemToUpdate = newItems[existingIndex];
       const newQty = (itemToUpdate.qty || 1) + partQty;
+      
+      // Validación 2: Verificar si la suma supera el stock
+      if (part.quantity < newQty) {
+          return alert(`No puedes agregar más. Tendrías ${newQty} en la lista, pero solo hay ${part.quantity} en stock.`);
+      }
+
       itemToUpdate.qty = newQty;
-      itemToUpdate.unitPrice = Number(part.price);
-      itemToUpdate.price = Number(part.price) * newQty;
+      // Si ya tenía precio unitario (porque el usuario lo editó), lo usamos. Si no, 0.
+      const currentUnitPrice = itemToUpdate.unitPrice || 0; 
+      itemToUpdate.price = currentUnitPrice * newQty;
       itemToUpdate.description = `[REPUESTO] ${part.name} (x${newQty})`;
       setItems(newItems);
     } else {
+      // Nuevo ítem
       const newItem = {
         description: `[REPUESTO] ${part.name} (x${partQty})`, 
-        price: Number(part.price) * partQty, 
+        price: 0, // 👈 Precio inicia en 0 (Cambio anterior)
         is_approved: true,
         inventoryId: part.id,
         qty: partQty,
-        unitPrice: Number(part.price)
+        unitPrice: 0
       };
       setItems([...items, newItem]);
     }
@@ -239,6 +258,12 @@ export default function EvaluationForm() {
   const handleItemChange = (index, field, value) => {
     const newItems = [...items];
     newItems[index][field] = value;
+    
+    // Si cambia el precio total, guardamos el unitario implícito para futuras sumas de cantidad
+    if (field === 'price' && newItems[index].qty > 0) {
+        newItems[index].unitPrice = Number(value) / newItems[index].qty;
+    }
+    
     setItems(newItems);
   };
 
@@ -486,6 +511,7 @@ export default function EvaluationForm() {
                           `}
                           value={item.price}
                           onChange={(e) => handleItemChange(index, 'price', e.target.value)}
+                          placeholder="0"
                         />
                       </div>
                       <div className="w-8 flex justify-end">
@@ -516,9 +542,14 @@ export default function EvaluationForm() {
                   <h3 className="text-xs font-bold text-indigo-700 uppercase mb-3">Repuesto de Inventario</h3>
                   <div className="flex gap-2 mb-2">
                     <div className="flex-1">
+                      {/* 👇 CAMBIO: Filtro quantity > 0 y display con (Stock: X) */}
                       <select className="w-full border border-indigo-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white" value={selectedPartId} onChange={(e) => setSelectedPartId(e.target.value)}>
                         <option value="">Seleccionar...</option>
-                        {inventory.filter(i => i.quantity > 0).map(i => <option key={i.id} value={i.id}>{i.name} (${Number(i.price).toLocaleString('es-CL')})</option>)}
+                        {inventory
+                          .filter(i => i.quantity > 0)
+                          .map(i => (
+                            <option key={i.id} value={i.id}>{i.name} (Stock: {i.quantity})</option>
+                        ))}
                       </select>
                     </div>
                     <div className="w-16">
