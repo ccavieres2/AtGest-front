@@ -36,7 +36,12 @@ export default function ExternalMarket() {
   const loadServices = async () => {
     setLoading(true);
     try {
-      const data = await apiGet("/external/");
+      // 👇 NUEVA INTEGRACIÓN: 
+      // Enviamos el parámetro 'exclude_self' si estamos en modo selección.
+      // El backend usará get_data_owner para excluir al "jefe" real.
+      const queryParam = isSelectMode ? "?exclude_self=true" : "";
+      
+      const data = await apiGet(`/external/${queryParam}`);
       setServices(data);
     } catch (error) {
       console.error(error);
@@ -45,22 +50,14 @@ export default function ExternalMarket() {
     }
   };
 
-  // 👇👇 AQUÍ ESTÁ LA CORRECCIÓN DE LÓGICA 👇👇
+  // 👇 FILTRO SIMPLIFICADO:
+  // Ya no filtramos por ID aquí porque el backend ya nos entrega la lista limpia.
   const filtered = services.filter((s) => {
-    // 1. Filtro de Texto (Buscador)
-    const matchesSearch = 
+    return (
       s.name.toLowerCase().includes(search.toLowerCase()) ||
-      s.provider_name.toLowerCase().includes(search.toLowerCase());
-
-    // 2. Filtro de "Auto-Externalización"
-    // Si estoy buscando para contratar (isSelectMode), NO debo ver mis propios servicios.
-    if (isSelectMode && s.owner === currentUserId) {
-      return false; 
-    }
-
-    return matchesSearch;
+      s.provider_name.toLowerCase().includes(search.toLowerCase())
+    );
   });
-  // 👆👆 FIN DE LA CORRECCIÓN 👆👆
 
   const confirmDelete = async () => {
     if (!itemToDelete) return;

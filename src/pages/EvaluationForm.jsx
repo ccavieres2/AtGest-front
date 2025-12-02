@@ -28,6 +28,9 @@ export default function EvaluationForm() {
   // Estado para saber si ya está aprobada/rechazada
   const [currentStatus, setCurrentStatus] = useState(""); 
   
+  // 👇 NUEVO ESTADO: Para almacenar quién creó la evaluación
+  const [createdBy, setCreatedBy] = useState(""); 
+  
   // Ítem de Diagnóstico por defecto (inmutable visualmente)
   const [items, setItems] = useState([
     { description: "Costo de Revisión / Diagnóstico", price: 0, is_approved: true }
@@ -83,6 +86,7 @@ export default function EvaluationForm() {
         setSelectedClient(savedState.client);
         
         setNotes(savedState.notes);
+        setCreatedBy(savedState.createdBy || ""); // Restauramos el creador si existía
         
         let currentItems = savedState.items || [];
         if (currentItems.length === 0) {
@@ -125,13 +129,11 @@ export default function EvaluationForm() {
           const data = await apiGet(`/evaluations/${id}/`);
           setSelectedClient(data.client);
           setNotes(data.notes);
+          setCreatedBy(data.created_by_name); // 👇 Capturamos el nombre del creador
           
           // 👇👇 CORRECCIÓN CRÍTICA PARA B2B 👇👇
-          // Mapeamos los ítems que vienen del backend para restaurar 'externalId'
           const loadedItems = (data.items || []).map(item => ({
             ...item,
-            // Si el backend nos devuelve 'external_service_source', lo guardamos como 'externalId'
-            // Esto asegura que al volver a guardar, no se pierda el vínculo B2B.
             externalId: item.external_service_source || null
           }));
           
@@ -159,7 +161,13 @@ export default function EvaluationForm() {
   // --- NAVEGACIÓN Y HELPERS ---
   const handleGoToExternal = () => {
     // Guardamos todo el estado actual antes de ir al "Mercado"
-    const stateToSave = { client: selectedClient, vehicle: selectedVehicle, notes: notes, items: items };
+    const stateToSave = { 
+      client: selectedClient, 
+      vehicle: selectedVehicle, 
+      notes: notes, 
+      items: items,
+      createdBy: createdBy // 👇 Guardamos esto también para no perderlo al volver
+    };
     sessionStorage.setItem("tempEvaluationState", JSON.stringify(stateToSave));
     
     const returnPath = location.pathname; 
@@ -390,6 +398,17 @@ export default function EvaluationForm() {
                   <option value="">-- Seleccionar --</option>
                   {availableClients.map(c => <option key={c.id} value={c.id}>{c.first_name} {c.last_name}</option>)}
                 </select>
+                
+                {/* 👇 MOSTRAR CREADOR SOLO SI ESTAMOS EN EDICIÓN Y HAY DATO 👇 */}
+                {id && createdBy && (
+                  <div className="mt-2 text-xs text-slate-500 flex items-center gap-1">
+                    <span className="font-semibold">Creado por:</span>
+                    <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded uppercase font-bold tracking-wider text-[10px]">
+                      {createdBy}
+                    </span>
+                  </div>
+                )}
+                
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase">Vehículo</label>

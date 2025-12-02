@@ -2,7 +2,7 @@
 import { useState, useEffect, Fragment } from "react";
 import { useNavigate } from "react-router-dom";
 import { Dialog, Transition } from "@headlessui/react";
-import { apiGet, apiDelete } from "../lib/api"; // Quitamos apiPost
+import { apiGet, apiDelete } from "../lib/api"; 
 import { PATHS } from "../routes/path";
 import AppNavbar from "../components/layout/AppNavbar";
 import AppDrawer from "../components/layout/AppDrawer";
@@ -44,7 +44,6 @@ export default function Evaluations() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
-  // Estados para Modal de Eliminación
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [evalToDelete, setEvalToDelete] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -65,15 +64,14 @@ export default function Evaluations() {
     }
   };
 
-  // Filtro de búsqueda
   const filtered = evaluations.filter(ev => {
     const clientName = ev.client_data ? `${ev.client_data.first_name} ${ev.client_data.last_name}` : "";
     const vehicleInfo = ev.vehicle_data ? `${ev.vehicle_data.brand} ${ev.vehicle_data.model}` : "";
-    const text = `${clientName} ${vehicleInfo} #${ev.id}`.toLowerCase();
+    const creator = ev.created_by_name || ""; // Filtramos también por creador
+    const text = `${clientName} ${vehicleInfo} #${ev.id} ${creator}`.toLowerCase();
     return text.includes(search.toLowerCase());
   });
 
-  // --- Funciones de Acción ---
   const handleCreate = () => {
     navigate(PATHS.evaluationNew);
   };
@@ -102,7 +100,6 @@ export default function Evaluations() {
     }
   };
 
-  // Helpers de formato
   const formatDate = (dateStr) => new Date(dateStr).toLocaleDateString("es-CL");
   
   const calculateTotal = (ev) => {
@@ -110,7 +107,6 @@ export default function Evaluations() {
     return ev.items.reduce((sum, item) => sum + Number(item.price || 0), 0);
   };
 
-  // Helper para mostrar estado bonito
   const getStatusBadge = (status) => {
     switch(status) {
       case 'approved': return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Aprobado</span>;
@@ -131,7 +127,6 @@ export default function Evaluations() {
 
       <main className="flex-1 mx-auto max-w-7xl w-full px-4 py-8">
         
-        {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Evaluaciones y Presupuestos</h1>
@@ -143,8 +138,8 @@ export default function Evaluations() {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar cliente o vehículo..."
-                className="w-full sm:w-64 border border-slate-300 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                placeholder="Buscar cliente, vehículo o creador..."
+                className="w-full sm:w-72 border border-slate-300 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
               <svg className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -160,7 +155,6 @@ export default function Evaluations() {
           </div>
         </div>
 
-        {/* Tabla */}
         <div className="bg-white rounded-2xl shadow-sm border overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
@@ -168,6 +162,7 @@ export default function Evaluations() {
                 <tr>
                   <th className="px-6 py-4 font-medium"># ID</th>
                   <th className="px-6 py-4 font-medium">Fecha</th>
+                  <th className="px-6 py-4 font-medium">Creado Por</th> {/* 👈 NUEVA COLUMNA */}
                   <th className="px-6 py-4 font-medium">Estado</th>
                   <th className="px-6 py-4 font-medium">Cliente</th>
                   <th className="px-6 py-4 font-medium">Vehículo</th>
@@ -177,14 +172,22 @@ export default function Evaluations() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
-                  <tr><td colSpan="7" className="px-6 py-8 text-center text-slate-500">Cargando...</td></tr>
+                  <tr><td colSpan="8" className="px-6 py-8 text-center text-slate-500">Cargando...</td></tr>
                 ) : filtered.length === 0 ? (
-                  <tr><td colSpan="7" className="px-6 py-8 text-center text-slate-500">No hay evaluaciones registradas.</td></tr>
+                  <tr><td colSpan="8" className="px-6 py-8 text-center text-slate-500">No hay evaluaciones registradas.</td></tr>
                 ) : (
                   filtered.map((ev) => (
                     <tr key={ev.id} className="hover:bg-slate-50 transition-colors group">
                       <td className="px-6 py-4 font-mono text-slate-600">#{ev.id}</td>
                       <td className="px-6 py-4 text-slate-600">{formatDate(ev.created_at)}</td>
+                      
+                      {/* 👇 DATO DE LA NUEVA COLUMNA */}
+                      <td className="px-6 py-4">
+                        <span className="inline-flex items-center px-2 py-1 rounded bg-indigo-50 text-indigo-700 text-xs font-bold uppercase tracking-wider border border-indigo-100">
+                          {ev.created_by_name || "Sistema"}
+                        </span>
+                      </td>
+
                       <td className="px-6 py-4">{getStatusBadge(ev.status)}</td>
                       <td className="px-6 py-4 font-medium text-slate-900">
                         {ev.client_data ? `${ev.client_data.first_name} ${ev.client_data.last_name}` : "—"}
@@ -198,8 +201,6 @@ export default function Evaluations() {
                       <td className="px-6 py-4 text-right">
                         
                         <div className="flex justify-end gap-2">
-                          
-                          {/* Editar (Ahora única vía para generar orden) */}
                           <IconButton onClick={() => handleEdit(ev.id)} title="Ver detalle / Editar">
                             <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2">
                               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
@@ -207,15 +208,12 @@ export default function Evaluations() {
                             </svg>
                           </IconButton>
                           
-                          {/* Eliminar */}
                           <IconButton onClick={() => openDeleteModal(ev)} title="Eliminar evaluación" className="text-red-400 hover:bg-red-50 hover:text-red-600">
                             <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2">
                               <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                             </svg>
                           </IconButton>
-
                         </div>
-
                       </td>
                     </tr>
                   ))
@@ -227,7 +225,6 @@ export default function Evaluations() {
       </main>
       <AppFooter />
 
-      {/* --- Modal Confirmar Eliminación --- */}
       <Transition appear show={isDeleteModalOpen} as={Fragment}>
         <Dialog as="div" className="relative z-50" onClose={() => !isDeleting && setIsDeleteModalOpen(false)}>
           <div className="fixed inset-0 bg-black/30 backdrop-blur-sm" aria-hidden="true" />
