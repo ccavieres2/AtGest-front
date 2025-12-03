@@ -216,7 +216,7 @@ export default function Orders() {
                   filtered.map((order) => (
                     <tr key={order.id} className="hover:bg-slate-50 transition-colors group">
                       <td className="px-6 py-4 font-mono text-slate-600 font-bold">
-                        #{order.folio || order.id} {/* Usa folio, si no existe (viejos), usa ID */}
+                        #{order.folio} {/* Usa folio, si no existe (viejos), usa ID */}
                       </td>
                       <td className="px-6 py-4"><Badge status={order.status} /></td>
                       <td className="px-6 py-4 font-medium text-slate-900">

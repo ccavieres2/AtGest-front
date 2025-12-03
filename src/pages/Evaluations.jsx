@@ -179,7 +179,7 @@ export default function Evaluations() {
                   filtered.map((ev) => (
                     <tr key={ev.id} className="hover:bg-slate-50 transition-colors group">
                       <td className="px-6 py-4 font-mono text-slate-600">
-                        #{ev.folio || ev.id}
+                        #{ev.folio}
                       </td>
                       <td className="px-6 py-4 text-slate-600">{formatDate(ev.created_at)}</td>
                       
