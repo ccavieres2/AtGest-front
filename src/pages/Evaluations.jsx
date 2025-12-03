@@ -67,7 +67,7 @@ export default function Evaluations() {
   const filtered = evaluations.filter(ev => {
     const clientName = ev.client_data ? `${ev.client_data.first_name} ${ev.client_data.last_name}` : "";
     const vehicleInfo = ev.vehicle_data ? `${ev.vehicle_data.brand} ${ev.vehicle_data.model}` : "";
-    const creator = ev.created_by_name || ""; // Filtramos también por creador
+    const creator = ev.created_by_name || ""; 
     const text = `${clientName} ${vehicleInfo} #${ev.id} ${creator}`.toLowerCase();
     return text.includes(search.toLowerCase());
   });
@@ -162,7 +162,7 @@ export default function Evaluations() {
                 <tr>
                   <th className="px-6 py-4 font-medium"># ID</th>
                   <th className="px-6 py-4 font-medium">Fecha</th>
-                  <th className="px-6 py-4 font-medium">Creado Por</th> {/* 👈 NUEVA COLUMNA */}
+                  <th className="px-6 py-4 font-medium">Creado Por</th>
                   <th className="px-6 py-4 font-medium">Estado</th>
                   <th className="px-6 py-4 font-medium">Cliente</th>
                   <th className="px-6 py-4 font-medium">Vehículo</th>
@@ -183,7 +183,6 @@ export default function Evaluations() {
                       </td>
                       <td className="px-6 py-4 text-slate-600">{formatDate(ev.created_at)}</td>
                       
-                      {/* 👇 DATO DE LA NUEVA COLUMNA */}
                       <td className="px-6 py-4">
                         <span className="inline-flex items-center px-2 py-1 rounded bg-indigo-50 text-indigo-700 text-xs font-bold uppercase tracking-wider border border-indigo-100">
                           {ev.created_by_name || "Sistema"}
@@ -244,7 +243,8 @@ export default function Evaluations() {
                   </Dialog.Title>
                   <div className="mt-2">
                     <p className="text-sm text-slate-500">
-                      Estás a punto de eliminar la evaluación <strong>#{evalToDelete?.id}</strong>. Esta acción no se puede deshacer.
+                      {/* 👇 AQUÍ MOSTRAMOS EL FOLIO CORRECTAMENTE */}
+                      Estás a punto de eliminar la evaluación <strong>#{evalToDelete?.folio}</strong>. Esta acción no se puede deshacer.
                     </p>
                   </div>
                 </div>

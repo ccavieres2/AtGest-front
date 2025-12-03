@@ -5,7 +5,6 @@ import { apiGet, apiPost, apiPut } from "../lib/api";
 import AppNavbar from "../components/layout/AppNavbar";
 import AppDrawer from "../components/layout/AppDrawer";
 import AppFooter from "../components/layout/AppFooter";
-// 👇 IMPORTAR EL GENERADOR DE PDF
 import { generateEvaluationPDF } from "../lib/pdfGenerator";
 
 export default function EvaluationForm() {
@@ -14,29 +13,24 @@ export default function EvaluationForm() {
   const location = useLocation(); 
   const [drawerOpen, setDrawerOpen] = useState(false);
   
-  // --- ESTADOS DE DATOS ---
   const [clients, setClients] = useState([]);
   const [vehicles, setVehicles] = useState([]); 
   const [inventory, setInventory] = useState([]); 
   const [busyVehicleIds, setBusyVehicleIds] = useState(new Set());
 
-  // --- FORMULARIO ---
   const [selectedClient, setSelectedClient] = useState("");
   const [selectedVehicle, setSelectedVehicle] = useState("");
   const [notes, setNotes] = useState("");
   
-  // Estado para saber si ya está aprobada/rechazada
   const [currentStatus, setCurrentStatus] = useState(""); 
   
-  // 👇 NUEVO ESTADO: Para almacenar quién creó la evaluación
   const [createdBy, setCreatedBy] = useState(""); 
+  const [folio, setFolio] = useState(null);
   
-  // Ítem de Diagnóstico por defecto (inmutable visualmente)
   const [items, setItems] = useState([
     { description: "Costo de Revisión / Diagnóstico", price: 0, is_approved: true }
   ]);
 
-  // Selectores locales
   const [selectedPartId, setSelectedPartId] = useState("");
   const [partQty, setPartQty] = useState(1);
 
@@ -44,7 +38,6 @@ export default function EvaluationForm() {
   const [loadingData, setLoadingData] = useState(!!id);
   const [processingAction, setProcessingAction] = useState(false);
 
-  // 1. Cargar Datos Maestros y Calcular Vehículos Ocupados
   useEffect(() => {
     const loadInitialData = async () => {
       try {
@@ -56,7 +49,6 @@ export default function EvaluationForm() {
         setClients(clientsData);
         setInventory(inventoryData);
 
-        // Filtrar vehículos ocupados
         const busyIds = evalsData
           .filter(ev => {
             if (id && Number(ev.id) === Number(id)) return false;
@@ -73,20 +65,17 @@ export default function EvaluationForm() {
     loadInitialData();
   }, [id]);
 
-  // 2. LÓGICA DE RESTAURACIÓN Y CARGA DE DATOS
   useEffect(() => {
     const loadOrRestore = async () => {
       const pendingServiceStr = sessionStorage.getItem("pendingExternalService");
       const savedStateStr = sessionStorage.getItem("tempEvaluationState");
 
-      // CASO A: Vuelvo de seleccionar un servicio externo (Estado temporal)
       if (savedStateStr) {
-        console.log("Restaurando estado desde sesión...");
         const savedState = JSON.parse(savedStateStr);
         setSelectedClient(savedState.client);
-        
         setNotes(savedState.notes);
-        setCreatedBy(savedState.createdBy || ""); // Restauramos el creador si existía
+        setCreatedBy(savedState.createdBy || "");
+        setFolio(savedState.folio || null);
         
         let currentItems = savedState.items || [];
         if (currentItems.length === 0) {
@@ -95,7 +84,6 @@ export default function EvaluationForm() {
 
         if (pendingServiceStr) {
           const service = JSON.parse(pendingServiceStr);
-          // Evitar duplicados si recarga la página
           const isDuplicate = currentItems.length > 0 && 
                               currentItems[currentItems.length - 1].externalId === service.id;
 
@@ -104,7 +92,7 @@ export default function EvaluationForm() {
               description: `[EXTERNO] ${service.name} - ${service.provider_name}`,
               price: Number(service.cost),
               is_approved: true,
-              externalId: service.id // Guardamos ID para enviarlo al backend
+              externalId: service.id
             };
             currentItems = [...currentItems, newItem];
           }
@@ -122,20 +110,19 @@ export default function EvaluationForm() {
         return; 
       }
 
-      // CASO B: Cargo una evaluación existente desde la API (Edición)
       if (id) {
         setLoadingData(true);
         try {
           const data = await apiGet(`/evaluations/${id}/`);
           setSelectedClient(data.client);
           setNotes(data.notes);
-          setCreatedBy(data.created_by_name); // 👇 Capturamos el nombre del creador
+          setCreatedBy(data.created_by_name);
+          setFolio(data.folio);
           
-          // 👇👇 CORRECCIÓN CRÍTICA PARA B2B Y STOCK 👇👇
           const loadedItems = (data.items || []).map(item => ({
             ...item,
             externalId: item.external_service_source || null,
-            inventoryId: item.inventory_item || null, // Recibimos el ID si existe
+            inventoryId: item.inventory_item || null,
             qty: item.quantity || 1
           }));
           
@@ -160,18 +147,16 @@ export default function EvaluationForm() {
     loadOrRestore();
   }, [id, navigate]);
 
-  // --- NAVEGACIÓN Y HELPERS ---
   const handleGoToExternal = () => {
-    // Guardamos todo el estado actual antes de ir al "Mercado"
     const stateToSave = { 
       client: selectedClient, 
       vehicle: selectedVehicle, 
       notes: notes, 
       items: items,
-      createdBy: createdBy // 👇 Guardamos esto también para no perderlo al volver
+      createdBy: createdBy,
+      folio: folio
     };
     sessionStorage.setItem("tempEvaluationState", JSON.stringify(stateToSave));
-    
     const returnPath = location.pathname; 
     navigate(`/external?selectMode=true&returnUrl=${encodeURIComponent(returnPath)}`);
   };
@@ -190,7 +175,6 @@ export default function EvaluationForm() {
     }
   };
 
-  // Filtro de clientes disponibles
   const availableClients = clients.filter(client => {
     if (id && Number(client.id) === Number(selectedClient)) return true;
     if (!client.vehicles || client.vehicles.length === 0) return false;
@@ -202,7 +186,6 @@ export default function EvaluationForm() {
     setItems([...items, { description: "", price: 0, is_approved: true }]);
   };
 
-  // --- LÓGICA DE AGREGAR DESDE INVENTARIO ---
   const handleAddPartFromInventory = () => {
     if (!selectedPartId) return alert("Selecciona un repuesto.");
     if (partQty < 1) return alert("La cantidad debe ser al menos 1.");
@@ -210,7 +193,6 @@ export default function EvaluationForm() {
     const part = inventory.find(p => p.id === Number(selectedPartId));
     if (!part) return;
 
-    // Validación 1: Verificar si hay stock suficiente inicialmente
     if (part.quantity < partQty) {
         return alert(`Stock insuficiente. Solo quedan ${part.quantity} unidades de ${part.name}.`);
     }
@@ -218,27 +200,23 @@ export default function EvaluationForm() {
     const existingIndex = items.findIndex(item => item.inventoryId === part.id);
     
     if (existingIndex >= 0) {
-      // Si ya existe, sumamos cantidad
       const newItems = [...items];
       const itemToUpdate = newItems[existingIndex];
       const newQty = (itemToUpdate.qty || 1) + partQty;
       
-      // Validación 2: Verificar si la suma supera el stock
       if (part.quantity < newQty) {
           return alert(`No puedes agregar más. Tendrías ${newQty} en la lista, pero solo hay ${part.quantity} en stock.`);
       }
 
       itemToUpdate.qty = newQty;
-      // Si ya tenía precio unitario (porque el usuario lo editó), lo usamos. Si no, 0.
       const currentUnitPrice = itemToUpdate.unitPrice || 0; 
       itemToUpdate.price = currentUnitPrice * newQty;
       itemToUpdate.description = `[REPUESTO] ${part.name} (x${newQty})`;
       setItems(newItems);
     } else {
-      // Nuevo ítem
       const newItem = {
         description: `[REPUESTO] ${part.name} (x${partQty})`, 
-        price: 0, // 👈 Precio inicia en 0 (Cambio anterior)
+        price: 0,
         is_approved: true,
         inventoryId: part.id,
         qty: partQty,
@@ -256,10 +234,11 @@ export default function EvaluationForm() {
   };
   
   const handleItemChange = (index, field, value) => {
+    if (field === 'price' && Number(value) < 0) return;
+
     const newItems = [...items];
     newItems[index][field] = value;
     
-    // Si cambia el precio total, guardamos el unitario implícito para futuras sumas de cantidad
     if (field === 'price' && newItems[index].qty > 0) {
         newItems[index].unitPrice = Number(value) / newItems[index].qty;
     }
@@ -267,7 +246,6 @@ export default function EvaluationForm() {
     setItems(newItems);
   };
 
-  // --- CÁLCULOS DE TOTALES ---
   const totalBudget = items.reduce((sum, item) => sum + (Number(item.price) || 0), 0);
   const totalApproved = items.filter(i => i.is_approved).reduce((sum, item) => sum + (Number(item.price) || 0), 0);
 
@@ -276,7 +254,7 @@ export default function EvaluationForm() {
     const vehicleObj = vehicles.find(v => v.id === Number(selectedVehicle));
 
     generateEvaluationPDF({
-      id: id || "Borrador",
+      id: folio || "Borrador",
       client: clientObj,
       vehicle: vehicleObj,
       items: items,
@@ -286,7 +264,6 @@ export default function EvaluationForm() {
     });
   };
 
-  // --- ACCIONES PRINCIPALES ---
   const handleSubmit = async (e) => {
     if(e) e.preventDefault();
     if (!selectedClient || !selectedVehicle) return alert("Faltan datos del vehículo");
@@ -308,7 +285,6 @@ export default function EvaluationForm() {
         evalId = res.id;
       }
       
-      // Enviamos items, asegurando que vaya el campo 'externalId' si existe
       await apiPost(`/evaluations/${evalId}/update_items/`, {
         items: items.filter((i, idx) => idx === 0 || i.description.trim() !== "")
       });
@@ -354,13 +330,13 @@ export default function EvaluationForm() {
     if (!confirm("¿Confirmas la aprobación del presupuesto y generación de Orden de Trabajo?")) return;
     setProcessingAction(true);
     try {
-      // 1. Primero guardamos para asegurar que los datos en backend estén frescos (incluyendo items nuevos)
       const evalId = await handleSubmit(null); 
       if (!evalId) throw new Error("No ID");
       
-      // 2. Generamos la orden
       const res = await apiPost(`/evaluations/${evalId}/generate_order/`, {});
-      alert(`¡Orden generada con éxito! (ID: ${res.order_id})`);
+      
+      // 👇 ALERT ACTUALIZADO PARA MOSTRAR EL FOLIO REAL
+      alert(`¡Orden de Trabajo #${res.order_folio} generada con éxito!`);
       navigate("/orders"); 
     } catch (error) {
       console.error(error);
@@ -385,10 +361,11 @@ export default function EvaluationForm() {
 
       <main className="flex-1 mx-auto max-w-5xl w-full px-4 py-8">
         
-        {/* CABECERA */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
-            <h1 className="text-2xl font-bold text-slate-900">{id ? `Editando #${id}` : "Crear Diagnóstico"}</h1>
+            <h1 className="text-2xl font-bold text-slate-900">
+              {id ? `Editando Evaluación #${folio || "..."}` : "Crear Diagnóstico"}
+            </h1>
             
             <button 
               onClick={handlePrint}
@@ -408,7 +385,6 @@ export default function EvaluationForm() {
 
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           
-          {/* 1. DATOS VEHÍCULO */}
           <div className="p-6 border-b border-slate-100 bg-slate-50/30">
             <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wide mb-4">1. Datos del Vehículo</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -424,7 +400,6 @@ export default function EvaluationForm() {
                   {availableClients.map(c => <option key={c.id} value={c.id}>{c.first_name} {c.last_name}</option>)}
                 </select>
                 
-                {/* 👇 MOSTRAR CREADOR SOLO SI ESTAMOS EN EDICIÓN Y HAY DATO 👇 */}
                 {id && createdBy && (
                   <div className="mt-2 text-xs text-slate-500 flex items-center gap-1">
                     <span className="font-semibold">Creado por:</span>
@@ -455,7 +430,6 @@ export default function EvaluationForm() {
             </div>
           </div>
 
-          {/* 2. LISTA DIAGNÓSTICO */}
           <div className="p-6">
             <div className="flex justify-between items-end mb-4">
               <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wide">2. Lista de Diagnóstico y Repuestos</h2>
@@ -506,6 +480,7 @@ export default function EvaluationForm() {
                       <div className="w-32 pl-2">
                         <input
                           type="number"
+                          min="0"
                           className={`block w-full rounded-md border-0 py-1.5 pl-5 pr-3 text-right text-slate-900 ring-1 ring-inset focus:ring-2 sm:text-sm sm:leading-6
                             ${isDiagnosis ? 'ring-indigo-200 focus:ring-indigo-600 bg-white' : 'ring-slate-300 focus:ring-indigo-600'}
                           `}
@@ -527,7 +502,6 @@ export default function EvaluationForm() {
               </div>
             </div>
 
-            {/* ACCIONES */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col justify-between h-full">
                 <div><h3 className="text-xs font-bold text-slate-500 uppercase mb-3">Agregar Ítem Manual</h3></div>
@@ -542,7 +516,6 @@ export default function EvaluationForm() {
                   <h3 className="text-xs font-bold text-indigo-700 uppercase mb-3">selecciona un producto</h3>
                   <div className="flex gap-2 mb-2">
                     <div className="flex-1">
-                      {/* 👇 CAMBIO: Filtro quantity > 0 y display con (Stock: X) */}
                       <select className="w-full border border-indigo-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white" value={selectedPartId} onChange={(e) => setSelectedPartId(e.target.value)}>
                         <option value="">Seleccionar...</option>
                         {inventory
@@ -561,7 +534,6 @@ export default function EvaluationForm() {
               </div>
             </div>
 
-            {/* TOTALES */}
             <div className="mt-6 flex justify-end">
               <div className="bg-slate-50 rounded-xl p-5 w-full max-w-xs border border-slate-100">
                 <div className="flex justify-between text-sm text-slate-500 mb-2"><span>Total Estimado:</span><span>${totalBudget.toLocaleString('es-CL')}</span></div>
@@ -571,7 +543,6 @@ export default function EvaluationForm() {
             </div>
           </div>
 
-          {/* 3. BOTONES FINALES */}
           <div className="p-6 border-t border-slate-100 bg-slate-50/30">
             <label className="block text-sm font-medium text-slate-700 mb-2">Observaciones Generales</label>
             <textarea 
