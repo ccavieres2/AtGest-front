@@ -15,7 +15,8 @@ export default function EvaluationForm() {
   
   const [clients, setClients] = useState([]);
   const [vehicles, setVehicles] = useState([]); 
-  const [inventory, setInventory] = useState([]); 
+  // 👇 CAMBIO: Renombramos a 'products' para ser consistentes
+  const [products, setProducts] = useState([]); 
   const [busyVehicleIds, setBusyVehicleIds] = useState(new Set());
 
   const [selectedClient, setSelectedClient] = useState("");
@@ -41,13 +42,14 @@ export default function EvaluationForm() {
   useEffect(() => {
     const loadInitialData = async () => {
       try {
-        const [clientsData, evalsData, inventoryData] = await Promise.all([
+        // 👇 CAMBIO CRÍTICO: Llamamos a /products/ en lugar de /inventory/
+        const [clientsData, evalsData, productsData] = await Promise.all([
           apiGet("/clients/"),
           apiGet("/evaluations/"),
-          apiGet("/inventory/")
+          apiGet("/products/") 
         ]);
         setClients(clientsData);
-        setInventory(inventoryData);
+        setProducts(productsData);
 
         const busyIds = evalsData
           .filter(ev => {
@@ -186,15 +188,18 @@ export default function EvaluationForm() {
     setItems([...items, { description: "", price: 0, is_approved: true }]);
   };
 
+  // 👇 LÓGICA DE AGREGAR REPUESTO (ACTUALIZADA)
   const handleAddPartFromInventory = () => {
     if (!selectedPartId) return alert("Selecciona un repuesto.");
     if (partQty < 1) return alert("La cantidad debe ser al menos 1.");
     
-    const part = inventory.find(p => p.id === Number(selectedPartId));
+    // Buscamos en el array de productos cargados
+    const part = products.find(p => p.id === Number(selectedPartId));
     if (!part) return;
 
-    if (part.quantity < partQty) {
-        return alert(`Stock insuficiente. Solo quedan ${part.quantity} unidades de ${part.name}.`);
+    // 👇 CAMBIO: Usamos 'stock_actual' en lugar de 'quantity'
+    if (part.stock_actual < partQty) {
+        return alert(`Stock insuficiente. Solo quedan ${part.stock_actual} unidades de ${part.name}.`);
     }
 
     const existingIndex = items.findIndex(item => item.inventoryId === part.id);
@@ -204,23 +209,26 @@ export default function EvaluationForm() {
       const itemToUpdate = newItems[existingIndex];
       const newQty = (itemToUpdate.qty || 1) + partQty;
       
-      if (part.quantity < newQty) {
-          return alert(`No puedes agregar más. Tendrías ${newQty} en la lista, pero solo hay ${part.quantity} en stock.`);
+      if (part.stock_actual < newQty) {
+          return alert(`No puedes agregar más. Tendrías ${newQty} en la lista, pero solo hay ${part.stock_actual} en stock.`);
       }
 
       itemToUpdate.qty = newQty;
-      const currentUnitPrice = itemToUpdate.unitPrice || 0; 
+      // Recalcular precio total basado en unitario
+      const currentUnitPrice = itemToUpdate.unitPrice || Number(part.sale_price) || 0; 
       itemToUpdate.price = currentUnitPrice * newQty;
       itemToUpdate.description = `[REPUESTO] ${part.name} (x${newQty})`;
       setItems(newItems);
     } else {
+      // 👇 CAMBIO: Usamos 'sale_price' como precio base sugerido
+      const unitPrice = Number(part.sale_price) || 0;
       const newItem = {
         description: `[REPUESTO] ${part.name} (x${partQty})`, 
-        price: 0,
+        price: unitPrice * partQty, // Precio total inicial
         is_approved: true,
         inventoryId: part.id,
         qty: partQty,
-        unitPrice: 0
+        unitPrice: unitPrice // Guardamos el unitario para cálculos futuros
       };
       setItems([...items, newItem]);
     }
@@ -335,7 +343,6 @@ export default function EvaluationForm() {
       
       const res = await apiPost(`/evaluations/${evalId}/generate_order/`, {});
       
-      // 👇 ALERT ACTUALIZADO PARA MOSTRAR EL FOLIO REAL
       alert(`¡Orden de Trabajo #${res.order_folio} generada con éxito!`);
       navigate("/orders"); 
     } catch (error) {
@@ -513,15 +520,22 @@ export default function EvaluationForm() {
               </div>
               <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 flex flex-col justify-between h-full">
                 <div>
-                  <h3 className="text-xs font-bold text-indigo-700 uppercase mb-3">selecciona un producto</h3>
+                  <h3 className="text-xs font-bold text-indigo-700 uppercase mb-3">Selecciona un repuesto</h3>
                   <div className="flex gap-2 mb-2">
                     <div className="flex-1">
-                      <select className="w-full border border-indigo-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white" value={selectedPartId} onChange={(e) => setSelectedPartId(e.target.value)}>
+                      <select 
+                        className="w-full border border-indigo-200 rounded-lg px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500 bg-white" 
+                        value={selectedPartId} 
+                        onChange={(e) => setSelectedPartId(e.target.value)}
+                      >
                         <option value="">Seleccionar...</option>
-                        {inventory
-                          .filter(i => i.quantity > 0)
-                          .map(i => (
-                            <option key={i.id} value={i.id}>{i.name} (Stock: {i.quantity})</option>
+                        {/* 👇 CAMBIO: Mostramos productos y stock_actual */}
+                        {products
+                          .filter(p => p.stock_actual > 0)
+                          .map(p => (
+                            <option key={p.id} value={p.id}>
+                              {p.name} ({p.stock_actual} u. • ${Number(p.sale_price).toLocaleString("es-CL")})
+                            </option>
                         ))}
                       </select>
                     </div>
